@@ -98,6 +98,7 @@ private:
     uint16_t m_Timeout;
     uint16_t m_max_retries;
     uint64_t m_rngState {0};
+    uint32_t m_lastMinTTL {0};
     bool m_shuttingDown {false};
 
     // Object Pool
@@ -119,7 +120,7 @@ private:
     void load_hosts_file();
     void invoke_callback(callback_t cb, const char* hostname, const std::vector<std::string>& ips, QUERY_TYPE qtype, void* user_data);
     void free_ips(char** ips, size_t count);
-    void update_lru_cache(const std::string& hostname, const std::vector<std::string>& ips, DNSLookup::QUERY_TYPE qtype);
+    void update_lru_cache(const std::string& hostname, const std::vector<std::string>& ips, DNSLookup::QUERY_TYPE qtype, uint32_t ttl);
     static uint64_t now_ms();
 };
 

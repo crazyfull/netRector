@@ -1,4 +1,5 @@
 #include "clsEpollReactor.h"
+#include "clsLog.h"
 
 #include "clsSocketList.h"
 #include "clsTimer.h"
@@ -12,6 +13,12 @@ EpollReactor::EpollReactor(int id, int maxConnection, int max_events, size_t buf
 }
 
 EpollReactor::~EpollReactor() {
+    // thread haye dige (TLS key workers) dige nabayad post() konan
+    if (m_liveToken) {
+        std::lock_guard<std::mutex> lock(m_liveToken->mutex);
+        m_liveToken->reactor = nullptr;
+    }
+
     // tartib mohem hast: har chizi ke az chize dige estefade mikone zoodtar az beyn mire
 
     // 1) hame connection ha va listener ha
@@ -59,6 +66,8 @@ EpollReactor::~EpollReactor() {
 void EpollReactor::init()
 {
     updateCashedTime();
+    m_liveToken = std::make_shared<LiveToken>();
+    m_liveToken->reactor = this;
 
     m_readBuffer = new char[READ_BUFFER_SIZE];
     m_scratchBuffer = new char[READ_BUFFER_SIZE + 64];
@@ -136,7 +145,7 @@ bool EpollReactor::addFlags(SocketContext *pContext, uint32_t flags)
         pContext->ev.events |= flags;
 
         if(epoll_ctl(m_epollSocket, EPOLL_CTL_MOD, pContext->fd, &pContext->ev) == -1){
-            perror("EPOLL_CTL_MOD mod_add");
+            NR_PERROR("EPOLL_CTL_MOD mod_add");
             return false;
         }
         return true;
@@ -153,7 +162,7 @@ void EpollReactor::removeFlags(SocketContext *pContext, uint32_t flags)
         pContext->ev.events &= ~flags;
 
         if(epoll_ctl(m_epollSocket, EPOLL_CTL_MOD, pContext->fd, &pContext->ev) == -1){
-            perror("EPOLL_CTL_MOD mod_remove");
+            NR_PERROR("EPOLL_CTL_MOD mod_remove");
         }
     }
 }
@@ -165,7 +174,7 @@ bool EpollReactor::setFlags(SocketContext *pContext, uint32_t events)
 
     pContext->ev.events = events;
     if(epoll_ctl(m_epollSocket, EPOLL_CTL_MOD, pContext->fd, &pContext->ev) == -1){
-        perror("EPOLL_CTL_MOD setFlags");
+        NR_PERROR("EPOLL_CTL_MOD setFlags");
         return false;
     }
     return true;
@@ -189,7 +198,7 @@ bool EpollReactor::add_fd(int fd, epoll_event *pEvent, uint32_t events)
 {
     pEvent->events = events;
     if(epoll_ctl(m_epollSocket, EPOLL_CTL_ADD, fd, pEvent) == -1){
-        perror("EPOLL_CTL_ADD add_fd");
+        NR_PERROR("EPOLL_CTL_ADD add_fd");
         return false;
     }
 
@@ -232,13 +241,13 @@ int EpollReactor::add_listener_fd(int port, const char* bindIP, acceptCallback c
         a6->sin6_port = htons((uint16_t) port);
         addrLen = sizeof(sockaddr_in6);
     } else {
-        fprintf(stderr, "add_listener: invalid bind address '%s'\n", bindIP);
+        NR_LOG(netrector::LOG_ERROR, "add_listener: invalid bind address '%s'", bindIP);
         return -1;
     }
 
     int listen_fd = ::socket(family, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if(listen_fd < 0) {
-        perror("socket(listener)");
+        NR_PERROR("socket(listener)");
         return -1;
     }
 
@@ -257,20 +266,20 @@ int EpollReactor::add_listener_fd(int port, const char* bindIP, acceptCallback c
         // IPV6_V6ONLY ro 0 mikonim ke dual stack beshe
         int optval = dualStack ? 0 : 1;
         if (setsockopt(listen_fd, IPPROTO_IPV6, IPV6_V6ONLY, &optval, sizeof(optval)) < 0) {
-            perror("setsockopt(IPV6_V6ONLY)");
+            NR_PERROR("setsockopt(IPV6_V6ONLY)");
             ::close(listen_fd);
             return -1;
         }
     }
 
     if(bind(listen_fd, (sockaddr*) &addr, addrLen) < 0) {
-        perror("error bind");
+        NR_PERROR("error bind");
         ::close(listen_fd);
         return -1;
     }
 
     if(::listen(listen_fd, LISTEN_BACKLOG) < 0) {
-        perror("error listen");
+        NR_PERROR("error listen");
         ::close(listen_fd);
         return -1;
     }
@@ -345,8 +354,11 @@ void EpollReactor::adoptAccepted(ListenerInfo* listener) {
                 // (listener level-triggered hast va bedone in kar halghe mishe).
                 if (m_lastAcceptErrorLog != getCachedNow()) {
                     m_lastAcceptErrorLog = getCachedNow();
-                    fprintf(stderr, "accept4: too many open files, rejecting connections (raise ulimit -n)\n");
+                    NR_LOG(netrector::LOG_ERROR, "accept4: too many open files, rejecting connections (raise ulimit -n)");
                 }
+
+                if (m_spareFd == -1)
+                    m_spareFd = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
 
                 if (m_spareFd != -1) {
                     ::close(m_spareFd);
@@ -358,14 +370,23 @@ void EpollReactor::adoptAccepted(ListenerInfo* listener) {
                     if (tmp != -1)
                         continue;
                 }
+
+                // bedone fd-e zakhire listener-e level-triggered halghe-ye masraf CPU misaze:
+                // accept movaghatan (200ms) gheyre faal mishe
+                pauseAccept();
                 break;
             }
 
-            perror("accept4");
+            NR_PERROR("accept4");
             break;
         }
 
         // option ha (NODELAY, KEEPALIVE) az listener ers reside
+
+        if (m_maxConnections != 0 && tcpConnectionCount() >= m_maxConnections) {
+            ::close(fd);    // saghf-e connection ha
+            continue;
+        }
 
         TCPSocket *pSocketbase = nullptr;
         if (listener->cb) {
@@ -387,6 +408,45 @@ void EpollReactor::adoptAccepted(ListenerInfo* listener) {
     }
 }
 
+void EpollReactor::pauseAccept()
+{
+    if (m_acceptPaused)
+        return;
+    m_acceptPaused = true;
+
+    for (ListenerInfo* info : m_listenerList) {
+        struct epoll_event ev;
+        memset(&ev, 0, sizeof(ev));
+        ev.events = 0;
+        SockInfo* slot = m_pConnectionList->slot((size_t)info->fd);
+        if (slot) ev.data.u64 = make_key(info->fd, slot->genID);
+        epoll_ctl(m_epollSocket, EPOLL_CTL_MOD, info->fd, &ev);
+    }
+
+    addTimer(200, [this]() { resumeAccept(); }, true);
+}
+
+void EpollReactor::resumeAccept()
+{
+    if (!m_acceptPaused)
+        return;
+    m_acceptPaused = false;
+
+    for (ListenerInfo* info : m_listenerList) {
+        struct epoll_event ev;
+        memset(&ev, 0, sizeof(ev));
+        ev.events = EPOLL_LISTINER_EVENTS;
+        SockInfo* slot = m_pConnectionList->slot((size_t)info->fd);
+        if (slot) ev.data.u64 = make_key(info->fd, slot->genID);
+        epoll_ctl(m_epollSocket, EPOLL_CTL_MOD, info->fd, &ev);
+    }
+}
+
+uint32_t EpollReactor::tcpConnectionCount() const
+{
+    return m_pConnectionList ? m_pConnectionList->countOfType(IS_TCP_SOCKET) : 0;
+}
+
 bool EpollReactor::register_fd(int fd, epoll_event *pEvent,SockTypes sockType, void* ptr)
 {
     if(!pEvent)
@@ -395,7 +455,7 @@ bool EpollReactor::register_fd(int fd, epoll_event *pEvent,SockTypes sockType, v
 
     SockInfo* sockinfo = m_pConnectionList->add(fd, sockType, ptr);
     if (!sockinfo) {
-        fprintf(stderr, "can not add fd %d to ConnectionList\n", fd);
+        NR_LOG(netrector::LOG_ERROR, "can not add fd %d to ConnectionList", fd);
         return false;
     }
 
@@ -406,7 +466,7 @@ bool EpollReactor::register_fd(int fd, epoll_event *pEvent,SockTypes sockType, v
     //make key
     pEvent->data.u64 = make_key(fd, sockinfo->genID);
     if (epoll_ctl(m_epollSocket, EPOLL_CTL_ADD, fd, pEvent) == -1) {
-        perror("epoll_ctl add");
+        NR_PERROR("epoll_ctl add");
         m_pConnectionList->remove(fd);
         return false;
     }
@@ -633,7 +693,7 @@ void EpollReactor::run(std::atomic<bool> &stop)
             if(errno == EINTR)
                 continue;
 
-            perror("epoll_wait");
+            NR_PERROR("epoll_wait");
             break;
         }
 

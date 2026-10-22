@@ -1,14 +1,21 @@
 #include "clsServer.h"
+#include "clsLog.h"
 #include <future>
 
-Server::Server(int maxConnection, int shards): m_shardCount(shards > 0 ? shards : 1), m_needToStop(false)
+Server::Server(int maxConnection, int shards, size_t bufferPoolSize, int maxEvents): m_shardCount(shards > 0 ? shards : 1), m_needToStop(false)
 {
     // neveshtan roye socket baste shode nabayad process ro bekoshe
     // (BoringSSL ba send() bedone MSG_NOSIGNAL minevise)
     ::signal(SIGPIPE, SIG_IGN);
 
     for(int i = 0; i < m_shardCount; ++i)
-        m_workerList.emplace_back(std::make_unique<EpollReactor> (i, maxConnection));
+        m_workerList.emplace_back(std::make_unique<EpollReactor> (i, maxConnection, maxEvents, bufferPoolSize));
+}
+
+void Server::setMaxConnectionsPerShard(uint32_t n)
+{
+    for (auto& worker : m_workerList)
+        worker->setMaxConnections(n);
 }
 
 Server::~Server() {
@@ -27,25 +34,39 @@ bool Server::AddNewListener(int Port, const char *bindIP, EpollReactor::acceptCa
             }
         }
     } else {
-        // reactor ha dar hale ejra hastan: kar bayad roye thread khodeshon anjam beshe
+        // reactor ha dar hale ejra hastan: kar bayad roye thread khodeshon anjam beshe.
+        // agar az thread-e yeki az reactor ha seda zade shode, roye haman mostaghim anjam mishe
+        // (vagarna montazer khodesh mimond: deadlock).
+        std::thread::id self = std::this_thread::get_id();
         std::vector<std::future<bool>> results;
-        for (auto& worker : m_workerList) {
+        bool ok = true;
+        for (size_t i = 0; i < m_workerList.size(); i++) {
+            EpollReactor* w = m_workerList[i].get();
+            if (i < m_threads.size() && m_threads[i].get_id() == self) {
+                ok = w->add_listener(Port, ip.c_str(), cb, ctx) && ok;
+                continue;
+            }
             auto done = std::make_shared<std::promise<bool>>();
             results.push_back(done->get_future());
-            EpollReactor* w = worker.get();
             w->post([w, Port, ip, cb, ctx, done]() {
                 done->set_value(w->add_listener(Port, ip.c_str(), cb, ctx));
             });
         }
 
-        bool ok = true;
-        for (auto& r : results)
+        for (auto& r : results) {
+            // reactor-i ke morde bashe hargez javab nemide: hadeaksar 5 sanie
+            if (r.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+                NR_LOG(netrector::LOG_ERROR, "AddNewListener: a reactor did not respond");
+                ok = false;
+                continue;
+            }
             ok = r.get() && ok;
+        }
         if (!ok)
             return false;
     }
 
-    printf("StartListen: (%s:%d)\n", ip.empty() ? "*" : ip.c_str(), Port);
+    NR_LOG(netrector::LOG_INFO, "StartListen: (%s:%d)", ip.empty() ? "*" : ip.c_str(), Port);
     return true;
 
 }

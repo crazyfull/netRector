@@ -47,14 +47,19 @@ public:
     // ezafe ke EAGAIN mide dar har batch). dar benchmark ba connection haye kotah ~35% behtar az
     // yek accept dar har event bod (nginx multi_accept off).
     // false: yek accept dar har event; listener level-triggered khodesh dobare etela mide.
-    void setMultiAccept(bool enable) {
-        m_multiAccept = enable;
-    }
+    void setMultiAccept(bool enable) { m_multiAccept = enable; }
 
     // TCP_DEFER_ACCEPT roye listener haye badi: connection faghat vaghti data dare tahvil dade mishe
-    void setDeferAccept(int seconds) {
-        m_deferAccept = seconds;
-    }
+    void setDeferAccept(int seconds) { m_deferAccept = seconds; }
+
+    // saghf-e tedad-e connection haye TCP (accept + connect) dar in reactor; 0 = bedone saghf.
+    // bishtar az an, connection haye jadid bela faseleh baste mishan.
+    void setMaxConnections(uint32_t n) { m_maxConnections = n; }
+    uint32_t tcpConnectionCount() const;
+
+    // token-e zende bodan baraye thread haye dige (TLS key workers): post() faghat agar reactor hanooz hast
+    using LiveToken = ReactorLiveToken;
+    std::shared_ptr<LiveToken> liveToken() const { return m_liveToken; }
 
     void run(std::atomic<bool> &stop);
 
@@ -109,11 +114,14 @@ private:
         int kind;
     };
 
-    bool m_useGarbageCollector {true};
+    bool m_useGarbageCollector {false};     // default: hazf dar entehaye haman dor
     bool m_gcDue {false};
     bool m_multiAccept {true};
+    bool m_acceptPaused {false};
     int m_deferAccept {0};
     size_t m_maintCursor {0};
+    uint32_t m_maxConnections {0};
+    std::shared_ptr<LiveToken> m_liveToken;
     int m_reactorID {0};
     int m_epollSocket {-1};
     int m_wakeupFd {-1};    //baraye exit safe epoll va post()
@@ -149,6 +157,8 @@ private:
     void maintenance();
     void shutdown_all();
     void adoptAccepted(ListenerInfo* listener);
+    void pauseAccept();
+    void resumeAccept();
     void runPostedTasks();
     void runDeferred();
     void collectGarbage();

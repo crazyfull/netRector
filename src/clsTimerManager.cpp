@@ -1,4 +1,5 @@
 #include "clsTimerManager.h"
+#include "clsLog.h"
 #include "clsSocketList.h"
 #include "clsEpollReactor.h"
 #include "clsTCPSocket.h"
@@ -28,7 +29,7 @@ void TimerManager::setReactor(EpollReactor *r) {
     if (m_SocketContext.fd == -1) {
         m_SocketContext.fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
         if (m_SocketContext.fd == -1) {
-            perror("timerfd_create");
+            NR_PERROR("timerfd_create");
             return;
         }
 
@@ -161,7 +162,7 @@ void TimerManager::updateTimerFd() {
         return;
 
     if (timerfd_settime(m_SocketContext.fd, 0, &new_value, nullptr) == -1) {
-        perror("timerfd_settime");
+        NR_PERROR("timerfd_settime");
     }
 }
 

@@ -1,4 +1,5 @@
 #include "clsTCPSocket.h"
+#include "clsLog.h"
 #include "clsEpollReactor.h"
 #include "clsSocketList.h"
 #include "clsTLSContext.h"
@@ -11,6 +12,7 @@
 #include <openssl/x509v3.h>
 #include <algorithm>
 #include <climits>
+#include <vector>
 #include <sys/sendfile.h>
 
 namespace {
@@ -139,24 +141,24 @@ void TCPSocket::setSocketKeepAlive(int fd, bool isEnable) {
     // enable/disable Keep-Alive
     result = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
     if (result < 0) {
-        perror("setsockopt(SO_KEEPALIVE) failed");
+        NR_PERROR("setsockopt(SO_KEEPALIVE) failed");
         return;
     }
 
     if (isEnable) {
         result = setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &KEEPIDLE_SECS, sizeof(KEEPIDLE_SECS));
         if (result < 0) {
-            perror("setsockopt(TCP_KEEPIDLE) failed");
+            NR_PERROR("setsockopt(TCP_KEEPIDLE) failed");
         }
 
         result = setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &KEEPINTVL_SECS, sizeof(KEEPINTVL_SECS));
         if (result < 0) {
-            perror("setsockopt(TCP_KEEPINTVL) failed");
+            NR_PERROR("setsockopt(TCP_KEEPINTVL) failed");
         }
 
         result = setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &KEEPCNT_MAX, sizeof(KEEPCNT_MAX));
         if (result < 0) {
-            perror("setsockopt(TCP_KEEPCNT) failed");
+            NR_PERROR("setsockopt(TCP_KEEPCNT) failed");
         }
     }
 }
@@ -344,6 +346,9 @@ void TCPSocket::close(bool force) {
     if (status == Closed)
         return;
 
+    if (m_closeReason == NotClosed)
+        m_closeReason = ClosedByApp;
+
     if (!m_pReactor) {
         // hargez be reactor vasl nashode; chizi baraye bastan nist
         status = Closed;
@@ -401,8 +406,10 @@ void TCPSocket::drainComplete()
 
 void TCPSocket::lingerDiscard()
 {
-    char* buf = m_pReactor->readBuffer();
-    size_t cap = m_pReactor->readBufferSize();
+    // buffer-e jodagane: close() momkene az dakhele callback-e yek socket-e dige seda zade beshe
+    // ke hamin alan dar hale parse kardan-e buffer-e moshtarak-e reactor hast.
+    char buf[4096];
+    size_t cap = sizeof(buf);
 
     for (int i = 0; i < 64; i++) {
         ssize_t n = ::recv(m_SocketContext.fd, buf, cap, 0);
@@ -461,6 +468,8 @@ void TCPSocket::finalizeClose()
     if (status == Closed)
         return;
 
+    if (m_closeReason == NotClosed)
+        m_closeReason = (m_lastError != 0) ? ClosedByError : ClosedByApp;
     status = Closed;
 
     if (m_dnsPending) {
@@ -506,6 +515,9 @@ void TCPSocket::abortLater()
     if (m_abortPending || status == Closed)
         return;
 
+    if (m_closeReason == NotClosed)
+        m_closeReason = ClosedByError;
+
     m_abortPending = true;
     if (m_registered)
         m_pReactor->defer(m_SocketContext.ev.data.u64, DEFER_CLOSE);
@@ -543,6 +555,8 @@ void TCPSocket::checkTimeout(uint64_t now)
     case Connecting:
     case Handshaking:
         if (idle >= (uint64_t)CONNECT_TIMEOUT_SECS) {
+            m_closeReason = ClosedByTimeout;
+            m_lastError = ETIMEDOUT;
             if (m_isAccepted)
                 finalizeClose();
             else
@@ -552,12 +566,15 @@ void TCPSocket::checkTimeout(uint64_t now)
 
     case Closing:
         if (idle >= (uint64_t)(m_lingering ? LINGER_TIMEOUT_SECS : CLOSING_TIMEOUT_SECS))
-            finalizeClose();
+            finalizeClose();    // dalil-e asli (app/peer) negah dashte mishe
         break;
 
     case Connected:
-        if (m_idleTimeout != 0 && idle >= m_idleTimeout)
+        if (m_idleTimeout != 0 && idle >= m_idleTimeout) {
+            m_closeReason = ClosedByTimeout;
+            m_lastError = ETIMEDOUT;
             finalizeClose();
+        }
         break;
 
     default:
@@ -573,7 +590,12 @@ void TCPSocket::failConnect(int err)
     if (status == Closed)
         return;
 
+    // IP haye dige-ye hamin esm (agar DNS chand javab dade bashe)
+    if (tryNextAddress(err))
+        return;
+
     m_lastError = err;
+    m_closeReason = (err == ETIMEDOUT) ? ClosedByTimeout : ConnectFailed;
     if (!m_connectFailNotified) {
         m_connectFailNotified = true;
         handleOnConnectFailed();
@@ -608,7 +630,7 @@ static bool parseLiteralAddress(const char* host, uint16_t port, sockaddr_storag
 bool TCPSocket::connectTo(const char* host, uint16_t port)
 {
     if(!m_pReactor){
-        printf("error: Reactor not found!\n");
+        NR_LOG(netrector::LOG_INFO, "error: Reactor not found!");
         return false;
     }
 
@@ -673,15 +695,54 @@ void TCPSocket::onResolved(char **ips, size_t count, DNSLookup::QUERY_TYPE qtype
         return;
     }
 
-    // estefade az avalin IP
+    // hame-ye IP ha negah dashte mishan; agar avali connect nashod badi emtehan mishe
+    ConnectInfo& info = connInfo();
+    info.addrs.clear();
+    for (size_t i = 0; i < count && i < 8; i++)
+        info.addrs.push_back(ips[i]);
+    info.nextAddr = 0;
+
     sockaddr_storage ss;
     socklen_t len = 0;
-    if (!parseLiteralAddress(ips[0], m_SocketContext.port, ss, len)) {
+    if (!parseLiteralAddress(info.addrs[0].c_str(), m_SocketContext.port, ss, len)) {
         failConnect(EHOSTUNREACH);
         return;
     }
+    info.nextAddr = 1;
 
     startConnect(reinterpret_cast<sockaddr*>(&ss), len);
+}
+
+// bad az shekast-e connect be yek IP: emtehan-e IP badi az haman esm.
+// true: talash-e jadid shoro shod (socket hanooz Connecting hast)
+bool TCPSocket::tryNextAddress(int err)
+{
+    if (status != Connecting || !m_connInfo || m_connInfo->nextAddr >= m_connInfo->addrs.size())
+        return false;
+
+    // faghat khata haye marbot be host/shabake (na timeout-e koli)
+    if (err != ECONNREFUSED && err != EHOSTUNREACH && err != ENETUNREACH && err != ETIMEDOUT && err != ECONNRESET)
+        return false;
+
+    sockaddr_storage ss;
+    socklen_t len = 0;
+    const std::string& ip = m_connInfo->addrs[m_connInfo->nextAddr++];
+    if (!parseLiteralAddress(ip.c_str(), m_SocketContext.port, ss, len))
+        return false;
+
+    // socket-e ghabli (agar sabt shode) baste mishe
+    if (m_SocketContext.fd != -1) {
+        if (m_registered) {
+            m_pReactor->unregister_fd(m_SocketContext.fd);
+            m_registered = false;
+        }
+        ::close(m_SocketContext.fd);
+        m_SocketContext.fd = -1;
+    }
+
+    updateLastActive();
+    startConnect(reinterpret_cast<sockaddr*>(&ss), len);
+    return status == Connecting;
 }
 
 void TCPSocket::startConnect(const sockaddr *addr, socklen_t addrLen)
@@ -750,6 +811,9 @@ void TCPSocket::_accepted(int fd)
 {
     if(getStatus() != Ready || !m_pReactor){
         ::close(fd);
+        // object-e factory bedone estefade mande: mesle yek close-e adi azad mishe
+        if (m_pReactor && getStatus() == Ready)
+            finalizeClose();
         return;
     }
 
@@ -918,6 +982,7 @@ bool TCPSocket::tlsStartKeyJob(uint16_t sigalg, const uint8_t *in, size_t len)
 
     auto job = std::make_shared<TLSKeyJob>();
     job->reactor = m_pReactor;
+    job->live = m_pReactor->liveToken();
     job->socketKey = m_SocketContext.ev.data.u64;
     job->sigalg = sigalg;
     job->in.assign(in, in + len);
@@ -1186,6 +1251,8 @@ void TCPSocket::onReadable()
 void TCPSocket::handleReadEOF()
 {
     m_readEOF = true;
+    if (m_closeReason == NotClosed)
+        m_closeReason = ClosedByPeer;
 
     if (!m_allowHalfClose) {
         // safe ersal khali mishe va bad socket baste mishe
@@ -1208,6 +1275,8 @@ bool TCPSocket::send(const void* data, size_t len) {
         return false;
 
     SendQueue* queue = &m_SocketContext.writeQueue;
+    if (!queueHasRoom(len))
+        return false;
     const char* p = static_cast<const char*>(data);
 
     // agar saf khalie mostaghim ersal mishe
@@ -1269,6 +1338,8 @@ bool TCPSocket::sendv(const iovec *iov, int iovcnt)
         return false;
 
     SendQueue* queue = &m_SocketContext.writeQueue;
+    if (!queueHasRoom(total))
+        return false;
 
     // saf gheyre khali: tike ha mostaghim be saf (yek copy)
     if (!m_ssl && !queue->empty()) {
@@ -1302,11 +1373,11 @@ bool TCPSocket::sendv(const iovec *iov, int iovcnt)
         return true;
     }
 
-    // plain TCP ba safe khali: writev mostaghim
+    // plain TCP ba safe khali: writev mostaghim (hadeaksar IOV_MAX tike dar yek syscall)
     struct msghdr msg;
     memset(&msg, 0, sizeof(msg));
     msg.msg_iov = const_cast<iovec*>(iov);
-    msg.msg_iovlen = (size_t)iovcnt;
+    msg.msg_iovlen = (size_t)std::min<int>(iovcnt, IOV_MAX);
 
     ssize_t n;
     do {
@@ -1326,11 +1397,17 @@ bool TCPSocket::sendv(const iovec *iov, int iovcnt)
     if ((size_t)n == total)
         return true;
 
-    // baghimande be saf ezafe mishe (yek copy, transactional)
-    struct iovec rest[64];
+    // baghimande be saf ezafe mishe (yek copy, transactional, har tedad iovec)
+    struct iovec restStack[64];
+    std::vector<struct iovec> restHeap;
+    struct iovec* rest = restStack;
+    if (iovcnt > 64) {
+        restHeap.resize((size_t)iovcnt);
+        rest = restHeap.data();
+    }
     int restCnt = 0;
     size_t skip = (size_t)n;
-    for (int i = 0; i < iovcnt && restCnt < 64; i++) {
+    for (int i = 0; i < iovcnt; i++) {
         if (skip >= iov[i].iov_len) {
             skip -= iov[i].iov_len;
             continue;
@@ -1342,6 +1419,7 @@ bool TCPSocket::sendv(const iovec *iov, int iovcnt)
     }
 
     if (!queue->pushv(rest, restCnt)) {
+        m_lastError = ENOMEM;
         abortLater();
         return false;
     }
@@ -1353,6 +1431,18 @@ bool TCPSocket::sendv(const iovec *iov, int iovcnt)
         handleOnPause();
     }
 
+    return true;
+}
+
+// saghf-e sakht-e safe ersal (setMaxSendQueue). bishtar az an send() ba ENOBUFS rad mishe;
+// connection baz mimone (app bayad onPause ro rayat kone).
+bool TCPSocket::queueHasRoom(size_t len)
+{
+    size_t limit = m_maxSendQueue ? m_maxSendQueue : MAX_SEND_QUEUE;
+    if (m_SocketContext.writeQueue.size() + len > limit) {
+        m_lastError = ENOBUFS;
+        return false;
+    }
     return true;
 }
 
@@ -1458,14 +1548,12 @@ bool TCPSocket::flushQueue()
 bool TCPSocket::sendNoCopy(const void *data, size_t len, SendQueue::ReleaseFn release, void *arg)
 {
     if (!data || len == 0) {
-        if (release)
-            release(const_cast<void*>(data), arg);
+        if (release) release(const_cast<void*>(data), arg);
         return true;
     }
 
-    if (status != Connected || m_abortPending || m_shutdownWrPending || m_SocketContext.fd == -1) {
-        if (release)
-            release(const_cast<void*>(data), arg);
+    if (status != Connected || m_abortPending || m_shutdownWrPending || m_SocketContext.fd == -1 || !queueHasRoom(len)) {
+        if (release) release(const_cast<void*>(data), arg);
         return false;
     }
 
@@ -1482,23 +1570,20 @@ bool TCPSocket::sendNoCopy(const void *data, size_t len, SendQueue::ReleaseFn re
             if (n == IO_AGAIN)
                 break;
 
-            if (release)
-                release(const_cast<void*>(data), arg);
+            if (release) release(const_cast<void*>(data), arg);
             abortLater();
             return false;
         }
 
         updateLastActive();
         if (sent == len) {
-            if (release)
-                release(const_cast<void*>(data), arg);
+            if (release) release(const_cast<void*>(data), arg);
             return true;
         }
     }
 
     if (!queue->pushExternal(data, len, sent, release, arg)) {
-        if (release)
-            release(const_cast<void*>(data), arg);
+        if (release) release(const_cast<void*>(data), arg);
         m_lastError = ENOMEM;
         abortLater();
         return false;
@@ -1525,6 +1610,8 @@ bool TCPSocket::sendFile(int fileFd, off_t offset, size_t len)
         return false;
 
     SendQueue* queue = &m_SocketContext.writeQueue;
+    if (!queueHasRoom(len))
+        return false;
     size_t sent = 0;
 
     if (queue->empty() && !m_ssl) {
@@ -1612,9 +1699,9 @@ void TCPSocket::onWritable() {
                 return;
         }
 
-        // vaghti ke saf khali shod EPOLLOUT disable beshe
-        if (!m_tlsReadWantsWrite)
-            m_pReactor->removeFlags(&m_SocketContext, EPOLLOUT);
+        // EPOLLOUT armed mimone: dar halate edge-triggered faghat vaghti buffer-e kernel az
+        // por be khali bere event mide, pas hazine-i nadare va do epoll_ctl dar har dor-e
+        // por/khali shodan-e saf hazf mishe.
     }
 
     //resume

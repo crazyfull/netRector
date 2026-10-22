@@ -11,6 +11,7 @@
 | `bench/` | بنچمارک مقابل nginx (`bench/bench.sh`) و نتایج (`bench/RESULTS.md`) |
 | `yamux_server/` | سرور تست Yamux با Python (پروژه‌ی جدا، فقط standard library) |
 | `tests/run_tests.py` | تست یکپارچه‌ی خودکار؛ `tests/go_yamux/` ابزار سازگاری با `hashicorp/yamux` |
+| `tests/muxstress/` | تست سنگین multiplexing: کلاینت/سرور با راستی‌آزمایی داده، relay شکننده‌ی بسته، fuzz ([README](tests/muxstress/README.md)) |
 | `scripts/`، `docker/` | اسکریپت‌های build و محیط لینوکسی |
 | `report/` | گزارش بررسی کد و وضعیت هر یافته |
 | `backup/` | نسخه‌ی اصلی فایل‌ها قبل از تغییرات |
@@ -90,6 +91,12 @@ python3 tests/run_tests.py --bin build-asan/netRector
 هر حالت ۱۱ تست دارد: echo، مقصد IPv6، دانلود و آپلود ۶۴ مگابایتی با بررسی hash، half-close،
 ۱۰۰ stream هم‌زمان، خطای اتصال و DNS، backpressure، قطع ناگهانی، نشت fd و قطع و وصل تونل.
 
+تست سنگین multiplexing (بافر پر، فریم‌های تکه‌تکه، فریم‌های خراب، TLS):
+
+```sh
+tests/muxstress/build.sh && tests/muxstress/run_muxstress.sh asan
+```
+
 ## بنچمارک مقابل nginx
 
 ```sh
@@ -164,6 +171,10 @@ Listener* l = new Listener(reactor);  l->start(8080, "0.0.0.0", acceptFactory, c
 - **thread:** همه‌ی متدها فقط از thread همان reactor. از thread دیگر با `EpollReactor::post(...)`.
 - **listener:** پارامتر `bindIP` حالا واقعاً اعمال می‌شود. `nullptr` یا `"*"` یعنی همه‌ی اینترفیس‌ها (IPv4 و IPv6). هر listener می‌تواند factory خودش را داشته باشد.
 - **Yamux:** برای هر stream علاوه بر `onData` و `onClose`، callbackهای `onRemoteFin`، `onPause` و `onResume` هست. `pauseStream` و `resumeStream` جریان دریافت را کنترل می‌کنند. `closeStream(id)` یعنی FIN و `closeStream(id, true)` یعنی RST. توضیح کامل در `src/clsMultiplexedTunnel.h`.
+- **لاگ:** پیام‌های کتابخانه از `netrector::setLogHandler(fn)` رد می‌شوند (پیش‌فرض stderr)؛ سطح با `setLogLevel`.
+- **دلیل بستن:** در `onClose` با `closeReason()` (ByApp / ByPeer / ByError / ByTimeout / ConnectFailed) و `getErrorCode()`.
+- **سقف‌ها:** `setMaxSendQueue(bytes)` سقف سخت صف ارسال هر سوکت (پیش‌فرض ۶۴MB؛ بیشتر از آن `send` با ENOBUFS رد می‌شود و اتصال باز می‌ماند)، `Server::setMaxConnectionsPerShard(n)`، `MultiplexedTunnel::setMaxStreams(n)` (پیش‌فرض ۴۰۹۶).
+- **اتصال خروجی:** همه‌ی IPهای پاسخ DNS نگه داشته می‌شوند و اگر اولی refused/unreachable بود بعدی امتحان می‌شود؛ TTL پاسخ DNS رعایت می‌شود.
 - **timeout:** اتصال و handshake بعد از ۱۵ ثانیه قطع می‌شوند. `setIdleTimeout(sec)` برای اتصال‌های بیکار اختیاری است. بررسی timeout ها تکه‌تکه انجام می‌شود (هر ۲۵۰ms بخشی از جدول)، پس با هزاران اتصال stall دوره‌ای ندارد.
 - **حافظه:** اتصال بیکار هیچ تخصیص heap ندارد (صف ارسال intrusive است و بافر خواندن مشترک). اگر pool پر شود صف از `malloc` استفاده می‌کند؛ اتصال قطع نمی‌شود. اندازه‌ی pool هر reactor با پارامتر سازنده‌ی `Server`/`EpollReactor` قابل تنظیم است.
 - **syscall ها:** گزینه‌های سوکت (NODELAY, keepalive) روی listener تنظیم می‌شوند و به اتصال‌های accept شده به ارث می‌رسند (۵ setsockopt کمتر برای هر اتصال)؛ بستن fd بدون `epoll_ctl(DEL)`؛ `recv` کوتاه یعنی بافر خالی است و `recv` اضافه برای EAGAIN زده نمی‌شود؛ اتصال‌های خروجی فقط NODELAY می‌گیرند (keepalive در صورت نیاز در `onConnected` با `setSocketKeepAlive(fd(), true)`).

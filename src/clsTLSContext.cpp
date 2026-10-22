@@ -83,13 +83,17 @@ private:
             job->ok = sign(m_key, *job);
             job->done.store(true, std::memory_order_release);
 
-            // edame-ye handshake roye thread-e reactor-e haman socket
-            EpollReactor* reactor = job->reactor;
-            reactor->post([job]() {
-                TCPSocket* sock = job->reactor->lookupSocket(job->socketKey);
-                if (sock)
-                    sock->tlsKeyJobDone(job.get());
-            });
+            // edame-ye handshake roye thread-e reactor-e haman socket; agar reactor dar in
+            // fasele az beyn rafte bashe (token), natije dor rikhte mishe
+            std::lock_guard<std::mutex> lock(job->live->mutex);
+            EpollReactor* reactor = job->live->reactor;
+            if (reactor) {
+                reactor->post([job]() {
+                    TCPSocket* sock = job->reactor->lookupSocket(job->socketKey);
+                    if (sock)
+                        sock->tlsKeyJobDone(job.get());
+                });
+            }
         }
     }
 };
@@ -99,7 +103,7 @@ static enum ssl_private_key_result_t keySign(SSL* ssl, uint8_t* /*out*/, size_t*
                                              uint16_t sigalg, const uint8_t* in, size_t in_len)
 {
     TCPSocket* sock = static_cast<TCPSocket*>(SSL_get_ex_data(ssl, TLSContext::socketExIndex()));
-    if (!sock || !sock->tlsStartKeyJob(sigalg, in, in_len))
+    if (!sock || !TLSKeyMethod::startJob(sock, sigalg, in, in_len))
         return ssl_private_key_failure;
     return ssl_private_key_retry;
 }
@@ -123,7 +127,7 @@ static enum ssl_private_key_result_t keyComplete(SSL* ssl, uint8_t* out, size_t*
     if (!sock)
         return ssl_private_key_failure;
 
-    TLSKeyJob* job = sock->tlsKeyJob();
+    TLSKeyJob* job = TLSKeyMethod::job(sock);
     if (!job)
         return ssl_private_key_failure;
     if (!job->done.load(std::memory_order_acquire))
@@ -134,11 +138,15 @@ static enum ssl_private_key_result_t keyComplete(SSL* ssl, uint8_t* out, size_t*
         memcpy(out, job->out.data(), job->out.size());
         *out_len = job->out.size();
     }
-    sock->tlsClearKeyJob();
+    TLSKeyMethod::clearJob(sock);
     return ok ? ssl_private_key_success : ssl_private_key_failure;
 }
 
 static const SSL_PRIVATE_KEY_METHOD g_asyncKeyMethod = { keySign, keyDecrypt, keyComplete };
+
+bool TLSKeyMethod::startJob(TCPSocket* sock, uint16_t sigalg, const uint8_t* in, size_t len) { return sock->tlsStartKeyJob(sigalg, in, len); }
+TLSKeyJob* TLSKeyMethod::job(TCPSocket* sock) { return sock->tlsKeyJob(); }
+void TLSKeyMethod::clearJob(TCPSocket* sock) { sock->tlsClearKeyJob(); }
 
 int TLSContext::socketExIndex()
 {

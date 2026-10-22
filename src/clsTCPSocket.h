@@ -7,6 +7,7 @@
 #include <sys/epoll.h>
 #include <sys/uio.h>
 #include <string>
+#include <vector>
 #include "SocketContext.h"
 #include "clsDNSLookup.h"
 #include "clsReactorObject.h"
@@ -39,6 +40,16 @@ public:
         Connecting = 4,     // DNS ya TCP connect
         Connected = 5,
         Handshaking = 6     // TLS handshake (ham accept ham connect)
+    };
+
+    // dalil-e baste shodan (dar onClose ba closeReason() va getErrorCode() ghabele khandan)
+    enum CloseReason {
+        NotClosed = 0,
+        ClosedByApp = 1,        // close() tavasote app
+        ClosedByPeer = 2,       // FIN / RST az tarafe moghabel
+        ClosedByError = 3,      // khataye I/O ya TLS (getErrorCode)
+        ClosedByTimeout = 4,    // connect/handshake/idle timeout
+        ConnectFailed = 5       // connect ya DNS movafagh nabod (onConnectFailed ham seda zade shode)
     };
 
     void setReactor(EpollReactor* r);
@@ -86,12 +97,11 @@ public:
     virtual void onReadEOF(){}
 
 
-    // hot path entry — called by shard
-    void handleEvents(uint32_t ev);
-    void onDeferred(int kind);
-    void checkTimeout(uint64_t now);
-    void onReadable();
-    void onWritable();
+    // dalil-e baste shodan va akharin khata (bad az close ham motabar)
+    CloseReason closeReason() const { return m_closeReason; }
+
+    // saghf-e sakht-e safe ersal baraye in socket (0 = MAX_SEND_QUEUE). bishtar az an send() rad mishe.
+    void setMaxSendQueue(size_t bytes) { m_maxSendQueue = bytes; }
 
     // app-side send helper (thread-affinity: shard thread)
     // false: socket vasl nist ya khata dade; data ersal nashode.
@@ -124,12 +134,6 @@ public:
     bool enableTLS(TLSContext* ctx, const char* serverName = nullptr);
     bool isTLS() const;
     TLSContext* tlsContext() const { return m_tlsCtx; }
-
-    // dakheli: amaliat-e async private key (TLSContext::enableAsyncPrivateKey)
-    bool tlsStartKeyJob(uint16_t sigalg, const uint8_t* in, size_t len);
-    struct TLSKeyJob* tlsKeyJob() const { return m_tlsJob.get(); }
-    void tlsClearKeyJob() { m_tlsJob.reset(); }
-    void tlsKeyJobDone(struct TLSKeyJob* job);
     const char* tlsVersion() const;
     std::string tlsALPN() const;
 
@@ -175,7 +179,11 @@ public:
 
     socketStatus getStatus() const;
     EpollReactor *getReactor() const;
-    void _accepted(int fd);
+
+    // ---- dakheli (faghat reactor va TLS) ----
+    friend class EpollReactor;
+    friend class TLSKeyWorkers;
+    friend struct TLSKeyMethod;
 
 protected:
     OnDataFn m_onData { nullptr };
@@ -189,7 +197,8 @@ protected:
     OnResumeFn m_onResume { nullptr };
     OnEOFFn m_onEOF { nullptr };
 
-    //argumnets
+    // yek argument moshtarak baraye hame-ye callback ha (akharin setOn* barande ast).
+    // tarahi-ye amdi: callback ha ye yek socket hamishe be yek object (owner) taalogh daran.
     void* m_callbacksArg { nullptr };
 
     struct SocketContext m_SocketContext {}; // composition with low-level TCP
@@ -212,8 +221,24 @@ protected:
     void abortLater();
 
 private:
+    // hot path entry — called by shard (friend)
+    void handleEvents(uint32_t ev);
+    void onDeferred(int kind);
+    void checkTimeout(uint64_t now);
+    void onReadable();
+    void onWritable();
+    void _accepted(int fd);
+
+    // amaliat-e async private key (TLSContext::enableAsyncPrivateKey)
+    bool tlsStartKeyJob(uint16_t sigalg, const uint8_t* in, size_t len);
+    struct TLSKeyJob* tlsKeyJob() const { return m_tlsJob.get(); }
+    void tlsClearKeyJob() { m_tlsJob.reset(); }
+    void tlsKeyJobDone(struct TLSKeyJob* job);
+
     EpollReactor* m_pReactor = nullptr;
     socketStatus status {Ready};
+    CloseReason m_closeReason { NotClosed };
+    size_t m_maxSendQueue { 0 };
 
     bool m_readPaused { false };
     bool m_pendingClose { false };      // close(false): bad az khali shodan saf baste beshe
@@ -246,8 +271,9 @@ private:
     struct ConnectInfo {
         std::string host;
         std::string serverName;
+        std::vector<std::string> addrs;     // javab haye DNS (ta 8 ta)
+        size_t nextAddr { 0 };
     };
-
     ConnectInfo* m_connInfo { nullptr };
     ConnectInfo& connInfo();
 
@@ -259,6 +285,7 @@ private:
     void startConnect(const struct sockaddr* addr, socklen_t addrLen);
     void onConnectReady();
     void failConnect(int err);
+    bool tryNextAddress(int err);
 
     // close
     void finalizeClose();
@@ -271,6 +298,7 @@ private:
     ssize_t ioRead(char* buf, size_t cap);
     ssize_t ioWrite(const void* data, size_t len);
     bool flushQueue();
+    bool queueHasRoom(size_t len);
     int socketError();
 
     // TLS

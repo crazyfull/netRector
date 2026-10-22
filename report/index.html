@@ -114,7 +114,7 @@
 
 <header>
   <h1>گزارش بررسی کد پروژه‌ی netRector (socketManager سابق)</h1>
-  <p class="meta">تاریخ بررسی: ۶ اکتبر ۲۰۲۶ &nbsp;|&nbsp; بازبینی کارایی: ۱۳ اکتبر ۲۰۲۶ &nbsp;|&nbsp; دامنه: همه‌ی فایل‌های پروژه به‌جز کتابخانه‌های third-party</p>
+  <p class="meta">تاریخ بررسی: ۶ اکتبر ۲۰۲۶ &nbsp;|&nbsp; بازبینی کارایی: ۱۳ اکتبر ۲۰۲۶ &nbsp;|&nbsp; پاسخ به گزارش خارجی: ۲۲ اکتبر ۲۰۲۶ &nbsp;|&nbsp; دامنه: همه‌ی فایل‌های پروژه به‌جز کتابخانه‌های third-party</p>
 </header>
 
 <section id="summary">
@@ -140,6 +140,51 @@
 </section>
 
 
+
+
+<section id="review2">
+  <h2>پاسخ به گزارش بازبینی خارجی (۱۸ اکتبر ۲۰۲۶) — اصلاح ۲۲ اکتبر</h2>
+  <p>
+    گزارش دریافت‌شده با کد تطبیق داده شد. فقط مواردی که تأیید شدند تغییر کردند؛ موارد رد شده یا «به عمد» با دلیل آمده‌اند.
+    بعد از اصلاح، همه‌ی تست‌ها (۱۲ تست × ۱۰ حالت + UDP) با ASan/UBSan/LSan و مجموعه‌ی جدید <code>tests/muxstress</code> گذشتند.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>یافته‌ی گزارش</th><th>نتیجه</th><th>تغییر</th></tr></thead>
+    <tbody>
+      <tr><td>۱</td><td><code>lingerDiscard</code> بافر مشترک را خراب می‌کند</td><td><span class="badge crit">تأیید</span></td><td>باگ واقعی: <code>close()</code> از داخل callback سوکت دیگر (مثلاً پارسر Yamux) به <code>lingerDiscard</code> می‌رسید و <code>recv</code> روی همان بافری می‌نوشت که پارسر می‌خواند. حالا از بافر مستقل stack استفاده می‌کند.</td></tr>
+      <tr><td>۲</td><td><code>sendv</code> با بیش از ۶۴ iovec داده گم می‌کند</td><td><span class="badge crit">تأیید</span></td><td>باقیمانده بدون سقف (آرایه‌ی پویا) به صف می‌رود؛ <code>sendmsg</code> به <code>IOV_MAX</code> محدود شد.</td></tr>
+      <tr><td>۳</td><td>GC با تأخیر پیش‌فرض است و تست نشده</td><td><span class="badge good">تأیید</span></td><td>پیش‌فرض «حذف در انتهای همان دور» شد؛ حالت تأخیری اختیاری ماند.</td></tr>
+      <tr><td>۴</td><td><code>maxConnection</code> سقف نیست</td><td><span class="badge good">تأیید</span></td><td>معنای پارامتر مستند شد (اندازه‌ی اولیه‌ی جدول)؛ سقف واقعی با <code>setMaxConnectionsPerShard</code> و شمارنده‌ی جدا <code>tcpConnectionCount()</code>.</td></tr>
+      <tr><td>۵</td><td>یک <code>m_callbacksArg</code> برای همه‌ی callbackها</td><td><span class="badge low">به عمد</span></td><td>طراحی اصلی: همه‌ی callbackهای یک سوکت به یک مالک می‌رسند؛ ۹ اشاره‌گر جدا ۶۴ بایت به هر اتصال اضافه می‌کرد. فقط در هدر مستند شد.</td></tr>
+      <tr><td>۶</td><td>fd ذخیره بعد از EMFILE برنمی‌گردد</td><td><span class="badge med">نیمه‌درست</span></td><td>در کد بلافاصله باز می‌شد، ولی اگر باز شدن شکست می‌خورد listener سطح‌محور busy-loop می‌ساخت. حالا در این حالت accept برای ۲۰۰ms غیرفعال می‌شود و fd ذخیره دوباره باز می‌شود.</td></tr>
+      <tr><td>۷</td><td><code>AddNewListener</code> می‌تواند برای همیشه بلاک شود</td><td><span class="badge good">تأیید</span></td><td>از thread خود reactor مستقیم اجرا می‌شود؛ انتظار برای بقیه حداکثر ۵ ثانیه.</td></tr>
+      <tr><td>۸</td><td>صف ارسال سقف ندارد</td><td><span class="badge good">تأیید</span></td><td>سقف سخت <code>setMaxSendQueue</code> (پیش‌فرض ۶۴MB): <code>send</code> با <code>ENOBUFS</code> رد می‌شود، اتصال باز می‌ماند.</td></tr>
+      <tr><td>۹</td><td>۱M تخصیص <code>SockInfo</code> در هر shard</td><td><span class="badge good">تأیید</span></td><td>slotها lazy ساخته می‌شوند (حافظه متناسب با بیشترین fd استفاده‌شده).</td></tr>
+      <tr><td>۱۰</td><td>دو <code>epoll_ctl</code> در هر چرخه‌ی صف</td><td><span class="badge good">تأیید</span></td><td><code>EPOLLOUT</code> بعد از اولین بار armed می‌ماند؛ در edge-triggered فقط در گذار از پر به خالی event می‌دهد، پس هزینه‌ای ندارد.</td></tr>
+      <tr><td>۱۱</td><td>نشت شیء در <code>_accepted</code> با وضعیت اشتباه</td><td><span class="badge good">تأیید</span></td><td>شیء مثل یک close عادی آزاد می‌شود.</td></tr>
+      <tr><td>۱۲</td><td><code>Server::stop</code> graceful نیست</td><td><span class="badge low">به عمد</span></td><td>توقف فوری است و مستند شده؛ بستن graceful کار app است.</td></tr>
+      <tr><td>۱۳</td><td>idle timeout پیش‌فرض صفر</td><td><span class="badge low">به عمد</span></td><td>تصمیم با app است (<code>setIdleTimeout</code>)؛ اتصال‌های مرده را keepalive کرنل (۶ دقیقه) می‌بندد.</td></tr>
+      <tr><td>۱۴</td><td>Yamux سقف stream ندارد</td><td><span class="badge good">تأیید</span></td><td><code>setMaxStreams</code> (پیش‌فرض ۴۰۹۶)؛ SYN اضافه با RST رد می‌شود.</td></tr>
+      <tr><td>۱۵</td><td>محدودیت‌های DNS</td><td><span class="badge med">بخشی</span></td><td>TTL پاسخ رعایت می‌شود و همه‌ی IPها نگه داشته می‌شوند (تلاش بعدی بعد از refused/unreachable). پورت مبدأ ثابت، نبود negative cache و TCP fallback ماند و مستند شد.</td></tr>
+      <tr><td>۱۶</td><td><code>GCList::retire</code> با <code>noexcept</code></td><td><span class="badge good">تأیید</span></td><td><code>noexcept</code> حذف شد.</td></tr>
+      <tr><td>۱۷</td><td>پارامترهای <code>Server</code></td><td><span class="badge good">تأیید</span></td><td>اندازه‌ی pool و <code>maxEvents</code> از سازنده قابل تنظیم شدند.</td></tr>
+      <tr><td>۱۸</td><td>worker TLS بعد از نابودی reactor</td><td><span class="badge good">تأیید</span></td><td>هر job یک token زنده‌بودن reactor دارد؛ نتیجه فقط اگر reactor هنوز هست post می‌شود.</td></tr>
+      <tr><td>—</td><td>توابع داخلی public، <code>printf</code> در کتابخانه، بی‌دلیل بودن <code>onClose</code>، shadow در <code>openStream</code></td><td><span class="badge good">تأیید</span></td><td>توابع داخلی private با <code>friend</code>؛ log handler (<code>netrector::setLogHandler</code>)؛ <code>closeReason()</code>؛ نام پارامتر عوض شد.</td></tr>
+      <tr><td>—</td><td>join بدون بررسی زنده بودن thread در تست</td><td><span class="badge good">تأیید</span></td><td>thread زنده بعد از timeout → خطا.</td></tr>
+      <tr><td>—</td><td>AF_UNIX، bind به IP مبدأ، <code>TCP_USER_TIMEOUT</code>، <code>SO_LINGER</code>، صف ارسال UDP</td><td><span class="badge low">نشد</span></td><td>ویژگی جدید هستند نه باگ؛ در فهرست کارهای آینده.</td></tr>
+      <tr><td>—</td><td>نتایج بنچمارک و تست ۱۰k اتصال در مخزن نیست</td><td><span class="badge low">رد</span></td><td>بازبین نسخه‌ی قدیمی‌تر را دیده بود؛ <code>bench/RESULTS.md</code> با ۱۰٬۰۰۰ اتصال موجود است.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3 style="margin-top:20px">تست سنگین multiplexing (<code>tests/muxstress</code>)</h3>
+  <p>
+    کلاینت و سرور جداگانه روی خود کتابخانه با رکوردهای شماره‌دار و CRC در هر stream؛ سناریوها: رکوردهای ۱ بایتی تا ۲۵۶KB،
+    stream های کند (پر شدن window و صف تونل)، RST وسط کار، FIN دوطرفه، عبور از relay که هر فریم را در چند خواندن با اندازه‌ی تصادفی
+    تحویل می‌دهد، TLS، ۳۰۰۰ stream هم‌زمان، ۲۰ نوع فریم خراب علیه سرور (بعد از هر مورد سلامت سرور با یک session معتبر بررسی می‌شود) و
+    سرور جعلی علیه کلاینت تونل (۳۰ بار آشغال؛ کلاینت هر بار تونل را بست، زنده ماند و دوباره وصل شد). همه با ASan بدون خطا.
+  </p>
+</section>
 
 <section id="perf">
   <h2>بازبینی کارایی (۱۳ اکتبر ۲۰۲۶)</h2>
@@ -228,7 +273,8 @@
 
 <nav aria-label="فهرست">
   <h2>فهرست</h2>
-  <ol start="-1">
+  <ol start="-2">
+    <li><a href="#review2">پاسخ به گزارش خارجی</a></li>
     <li><a href="#perf">بازبینی کارایی</a></li>
     <li><a href="#status">وضعیت پس از اصلاح</a></li>
     <li><a href="#map">نقشه‌ی پروژه</a></li>

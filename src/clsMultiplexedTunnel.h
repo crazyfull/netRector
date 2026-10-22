@@ -16,6 +16,7 @@ constexpr uint32_t MAX_FRAME_PAYLOAD = 32 * 1024;           // hadeaksar payload
 constexpr size_t STREAM_HIGH_WATERMARK = 128 * 1024;        // safe ersal har stream: bishtar az in -> onPause
 constexpr size_t STREAM_LOW_WATERMARK = 32 * 1024;          // kamtar az in -> onResume
 constexpr size_t STREAM_FLUSH_QUANTUM = 64 * 1024;          // sahme har stream dar har nobat (edalat beyne stream ha)
+constexpr size_t MAX_STREAMS_DEFAULT = 4096;                // saghf-e stream haye hamzaman har tunnel
 
 // Frame types
 enum class FrameType : uint8_t {
@@ -110,7 +111,10 @@ public:
 
     // API for streams
     // 0: tunnel vasl nist ya GoAway daryaft/ersal shode
-    uint32_t openStream(OnStreamDataFn onData, OnStreamCloseFn onClose, void* arg);
+    uint32_t openStream(OnStreamDataFn dataFn, OnStreamCloseFn closeFn, void* arg);
+
+    // saghf-e stream haye hamzaman (default MAX_STREAMS_DEFAULT). SYN-e bishtar az an ba RST rad mishe.
+    void setMaxStreams(size_t n) { m_maxStreams = n; }
     bool sendToStream(uint32_t streamId, const uint8_t* data, size_t len);
 
     // rst=false: FIN (half-close) bad az ersale data haye dar saf; daryaft edame dare
@@ -165,6 +169,7 @@ private:
     uint32_t m_nextStreamId;
     std::unordered_map<uint32_t, Stream> m_streams;
     size_t m_liveStreams = 0;
+    size_t m_maxStreams = MAX_STREAMS_DEFAULT;
     OnNewStreamFn m_onNewStream = nullptr;
     void* m_newStreamArg = nullptr;
 

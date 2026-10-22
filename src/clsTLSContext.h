@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "clsReactorObject.h"
 
 // forward declaration (BoringSSL)
 typedef struct ssl_ctx_st SSL_CTX;
@@ -13,16 +14,25 @@ typedef struct ssl_st SSL;
 typedef struct evp_pkey_st EVP_PKEY;
 class EpollReactor;
 class TLSKeyWorkers;
+class TCPSocket;
 
 // yek amaliat-e emza (private key) ke roye thread-e worker anjam mishe
 struct TLSKeyJob {
     EpollReactor* reactor { nullptr };
+    std::shared_ptr<ReactorLiveToken> live;
     uint64_t socketKey { 0 };
     uint16_t sigalg { 0 };
     std::vector<uint8_t> in;
     std::vector<uint8_t> out;
     std::atomic<bool> done { false };
     bool ok { false };
+};
+
+// callback haye SSL_PRIVATE_KEY_METHOD (dakheli)
+struct TLSKeyMethod {
+    static bool startJob(TCPSocket* sock, uint16_t sigalg, const uint8_t* in, size_t len);
+    static TLSKeyJob* job(TCPSocket* sock);
+    static void clearJob(TCPSocket* sock);
 };
 
 // ============================== TLSContext (BoringSSL) =======================

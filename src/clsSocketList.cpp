@@ -16,6 +16,11 @@ uint32_t SocketList::count() const
     return m_activeConnectionList.size();
 }
 
+uint32_t SocketList::countOfType(SockTypes type) const
+{
+    return type == IS_TCP_SOCKET ? m_tcpCount : 0;
+}
+
 
 uint32_t SocketList::maximumSize() const
 {
@@ -31,12 +36,9 @@ void SocketList::forEachActive(std::function<void (SockInfo *)> callback) {
     m_activeConnectionList.for_each(callback);
 }
 
+// slot ha lazy sakhte mishan: hafeze motenaseb ba bishtarin fd-e estefade shode,
+// na ba ulimit (1M slot * 56B * tedad shard).
 SocketList::SocketList(int MaxFD):m_list(MaxFD > 0 ? MaxFD : 1024, nullptr) {
-
-    //init preallocate
-    for (size_t i = 0; i < m_list.size(); i++) {
-        m_list[i] = new SockInfo;
-    }
 }
 
 SocketList::~SocketList()
@@ -58,11 +60,7 @@ bool SocketList::grow(int fd)
     while (newSize <= (size_t)fd)
         newSize *= 2;
 
-    size_t oldSize = m_list.size();
     m_list.resize(newSize, nullptr);
-    for (size_t i = oldSize; i < newSize; i++) {
-        m_list[i] = new SockInfo;
-    }
     return true;
 }
 
@@ -83,9 +81,14 @@ SockInfo *SocketList::add(int fd, SockTypes sockType, void* ptr) {
         return nullptr;
     }
 
+    if (!m_list[fd])
+        m_list[fd] = new SockInfo;
+
     SockInfo *pSocketInfo = m_list[fd];
     pSocketInfo->fd = fd;
     pSocketInfo->type = sockType;
+    if (sockType == IS_TCP_SOCKET)
+        m_tcpCount++;
     pSocketInfo->socketBasePtr = ptr;
     pSocketInfo->genID = nextGenID();
 
@@ -100,7 +103,7 @@ SockInfo *SocketList::get(int fd, uint32_t sockgenId) {
         return nullptr;
 
     SockInfo* pSocketInfo = m_list[fd];
-    if(pSocketInfo->type == IS_NOT_SET || pSocketInfo->genID != sockgenId){
+    if(!pSocketInfo || pSocketInfo->type == IS_NOT_SET || pSocketInfo->genID != sockgenId){
         return nullptr;
     }
 
@@ -113,6 +116,9 @@ void SocketList::remove(int fd) {
 
     SockInfo* pSocketInfo = m_list[fd];
     if (pSocketInfo) {
+        if (pSocketInfo->type == IS_TCP_SOCKET && m_tcpCount > 0)
+            m_tcpCount--;
+
         //remove from active list
         m_activeConnectionList.remove(pSocketInfo);
 

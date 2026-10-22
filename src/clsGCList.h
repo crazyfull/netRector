@@ -45,7 +45,7 @@ public:
     }
 
     // add object
-    void retire(T* p) noexcept {
+    void retire(T* p) {
         m_qList.push_back(GCNode{p, now_s_coarse()});
     }
 

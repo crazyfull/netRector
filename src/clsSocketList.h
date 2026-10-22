@@ -35,6 +35,7 @@ private:
     using ActiveSocketList = IntrusiveList<SockInfo, &SockInfo::active_link>;
     ActiveSocketList m_activeConnectionList;
     uint32_t m_genIDCounter{0};
+    uint32_t m_tcpCount{0};
 
     bool grow(int fd);
     uint32_t nextGenID();
@@ -51,7 +52,8 @@ public:
     // remove connection
     void remove(int fd);
     uint32_t genIDCounter() const;
-    uint32_t count() const;
+    uint32_t count() const;                 // hame-ye fd haye sabt shode (listener, timer, dns, ...)
+    uint32_t countOfType(SockTypes type) const;   // felan faghat IS_TCP_SOCKET
     uint32_t maximumSize() const;
     std::vector<SockInfo*> *list();
     SockInfo* slot(size_t i) { return i < m_list.size() ? m_list[i] : nullptr; }

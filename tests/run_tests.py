@@ -376,6 +376,8 @@ def t_concurrent(top, streams=100, size=512 * 1024):
         t.start()
     for t in threads:
         t.join(120)
+    hung = sum(1 for t in threads if t.is_alive())
+    assert hung == 0, "%d stream workers still running after 120s (stall)" % hung
     assert not errors, "; ".join(errors[:5])
 
 

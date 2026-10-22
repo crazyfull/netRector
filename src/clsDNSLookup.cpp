@@ -1,4 +1,5 @@
 #include "clsDNSLookup.h"
+#include "clsLog.h"
 #include "clsEpollReactor.h"
 #include <algorithm>
 #include <cstdio>
@@ -77,7 +78,7 @@ void DNSLookup::reset_socket() {
     m_SocketContext.fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     if (m_SocketContext.fd == -1) {
 #ifdef DEBUG
-        perror("DNS socket creation failed");
+        NR_PERROR("DNS socket creation failed");
 #endif
         return;
     }
@@ -88,7 +89,7 @@ void DNSLookup::reset_socket() {
     addr.sin_port = 0;
     if (bind(m_SocketContext.fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
 #ifdef DEBUG
-        perror("DNS bind failed");
+        NR_PERROR("DNS bind failed");
 #endif
         ::close(m_SocketContext.fd);
         m_SocketContext.fd = -1;
@@ -99,7 +100,7 @@ void DNSLookup::reset_socket() {
     bool ret = m_pReactor->register_fd(fd(), &m_SocketContext.ev, IS_DNS_LOOKUP_SOCKET, this);
     if (!ret) {
 #ifdef DEBUG
-        perror("Add DNS fd to epoll failed");
+        NR_PERROR("Add DNS fd to epoll failed");
 #endif
         ::close(m_SocketContext.fd);
         m_SocketContext.fd = -1;
@@ -107,7 +108,7 @@ void DNSLookup::reset_socket() {
     }
 
 #ifdef DEBUG
-    printf("DNSLookup initialized with fd %d\n", fd());
+    NR_LOG(netrector::LOG_INFO, "DNSLookup initialized with fd %d", fd());
 #endif
 }
 
@@ -319,7 +320,7 @@ void DNSLookup::on_dns_read() {
                 continue;
 
 #ifdef DEBUG
-            perror("DNS recvfrom failed");
+            NR_PERROR("DNS recvfrom failed");
 #endif
             // darkhast haye montazer ba timeout dobare ersal mishan
             reset_socket();
@@ -369,13 +370,15 @@ void DNSLookup::handle_packet(const uint8_t *packet, size_t len, const sockaddr_
     std::vector<std::string> ips;
     if (rcode == 0) {
         // parse ham soal ro ba darkhast tatbigh mide ham javab ha ro estekhraj mikone
+        m_lastMinTTL = UINT32_MAX;
         if (!parse_dns_response(packet, len, req, ips)) {
             // soal ba darkhast ma yeki nabod: nadide gerefte mishe
             return;
         }
 
         if (!ips.empty()) {
-            update_lru_cache(req->hostname, ips, req->qtype);
+            // TTL-e javab rayat mishe (hadeaksar cache_ttl, hadeaghal 1 sanie)
+            update_lru_cache(req->hostname, ips, req->qtype, m_lastMinTTL);
         }
 
         // ips khali: esm vojod dare ama in noe record ro nadare (NODATA)
@@ -384,7 +387,7 @@ void DNSLookup::handle_packet(const uint8_t *packet, size_t len, const sockaddr_
     }
 
 #ifdef DEBUG
-    printf("DNS error for %s (QTYPE=%u): RCODE=%u\n", req->hostname.c_str(), req->qtype, rcode);
+    NR_LOG(netrector::LOG_INFO, "DNS error for %s (QTYPE=%u): RCODE=%u", req->hostname.c_str(), req->qtype, rcode);
 #endif
 
     // NXDOMAIN javab ghatei hast; baghie khata ha (ServFail, Refused, ...) ba server badi tekrar mishan
@@ -416,7 +419,7 @@ void DNSLookup::maintenance() {
 
     for (DNSRequest* req : failed) {
 #ifdef DEBUG
-        printf("DNS timeout for %s (QTYPE=%u, retries=%u)\n", req->hostname.c_str(), req->qtype, req->retry_count);
+        NR_LOG(netrector::LOG_INFO, "DNS timeout for %s (QTYPE=%u, retries=%u)", req->hostname.c_str(), req->qtype, req->retry_count);
 #endif
         finish_request(req, {});
     }
@@ -501,7 +504,7 @@ bool DNSLookup::send_request(DNSRequest *req) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             return true;
 #ifdef DEBUG
-        perror("DNS sendto failed");
+        NR_PERROR("DNS sendto failed");
 #endif
         return false;
     }
@@ -582,8 +585,11 @@ bool DNSLookup::parse_dns_response(const uint8_t* packet, size_t len, const DNSR
             break;
 
         uint16_t type = (uint16_t)((packet[pos] << 8) | packet[pos + 1]);
+        uint32_t ttl = ((uint32_t)packet[pos + 4] << 24) | ((uint32_t)packet[pos + 5] << 16) | ((uint32_t)packet[pos + 6] << 8) | packet[pos + 7];
         uint16_t rdlen = (uint16_t)((packet[pos + 8] << 8) | packet[pos + 9]);
         pos += 10;
+        if (ttl < m_lastMinTTL)
+            m_lastMinTTL = ttl;
 
         if (pos + rdlen > len)
             break;
@@ -677,7 +683,7 @@ void DNSLookup::load_hosts_file() {
     }
 }
 
-void DNSLookup::update_lru_cache(const std::string& hostname, const std::vector<std::string>& ips, DNSLookup::QUERY_TYPE qtype) {
+void DNSLookup::update_lru_cache(const std::string& hostname, const std::vector<std::string>& ips, DNSLookup::QUERY_TYPE qtype, uint32_t ttl) {
     auto it = m_cache_map.find(hostname);
     if (it == m_cache_map.end()) {
         while (!m_cache_list.empty() && m_cache_list.size() >= m_cache_max_size) {
@@ -693,11 +699,15 @@ void DNSLookup::update_lru_cache(const std::string& hostname, const std::vector<
     }
 
     time_t now = time(nullptr);
+    time_t ttlSec = (time_t)std::min<uint64_t>(ttl, m_cache_ttl_sec);
+    if (ttlSec < 1) ttlSec = 1;
+    // zaman-e enghezaye vaghei = now + ttl; dar lookup ba cache_ttl moghayese mishe
+    time_t stamp = now - (time_t)m_cache_ttl_sec + ttlSec;
     if (qtype == DNSLookup::A) {
         it->second.a_ips = ips;
-        it->second.a_time = now;
+        it->second.a_time = stamp;
     } else if (qtype == DNSLookup::AAAA) {
         it->second.aaaa_ips = ips;
-        it->second.aaaa_time = now;
+        it->second.aaaa_time = stamp;
     }
 }

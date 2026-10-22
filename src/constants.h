@@ -24,6 +24,7 @@ static constexpr size_t SLAB_SIZE = 8 * 1024;                    // 8KB
 static constexpr size_t LOW_WATERMARK = 64 * 1024;
 static constexpr size_t READ_BUFFER_SIZE = 64 * 1024;            // buffer khandan moshtarak har reactor
 static constexpr size_t SEND_BLOCK_MIN = 4 * 1024;               // hadeaghal size block dar SendQueue
+static constexpr size_t MAX_SEND_QUEUE = 64 * 1024 * 1024;       // saghf-e sakht-e safe ersal har socket (setMaxSendQueue)
 
 
 // Timer Intervals (in milliseconds)

@@ -1,4 +1,5 @@
 #include "clsMultiplexedTunnel.h"
+#include "clsLog.h"
 #include <cstdio>
 #include <vector>
 #include "clsEpollReactor.h"
@@ -59,8 +60,8 @@ bool MultiplexedTunnel::initSendQueue(Stream& session) {
     return true;
 }
 
-uint32_t MultiplexedTunnel::openStream(OnStreamDataFn onData, OnStreamCloseFn onClose, void* arg) {
-    if (getStatus() != Connected || m_localGoAway || m_remoteGoAway)
+uint32_t MultiplexedTunnel::openStream(OnStreamDataFn dataFn, OnStreamCloseFn closeFn, void* arg) {
+    if (getStatus() != Connected || m_localGoAway || m_remoteGoAway || m_liveStreams >= m_maxStreams)
         return 0;
 
     uint32_t id = m_nextStreamId;
@@ -78,8 +79,8 @@ uint32_t MultiplexedTunnel::openStream(OnStreamDataFn onData, OnStreamCloseFn on
 
     Stream& s = m_streams[id];
     s.id = id;
-    s.onData = onData;
-    s.onClose = onClose;
+    s.onData = dataFn;
+    s.onClose = closeFn;
     s.arg = arg;
     m_liveStreams++;
 
@@ -114,7 +115,7 @@ bool MultiplexedTunnel::sendToStream(uint32_t streamId, const uint8_t* data, siz
 
     // window tarafe moghabel ya safe tunnel por hast: baghimande dar safe stream mimone
     if (!initSendQueue(*s) || !s->pendingData->push(data + pos, len - pos)) {
-        fprintf(stderr, "yamux: out of memory, closing tunnel fd=%d\n", fd());
+        NR_LOG(netrector::LOG_ERROR, "yamux: out of memory, closing tunnel fd=%d", fd());
         abortLater();
         return false;
     }
@@ -268,7 +269,7 @@ void MultiplexedTunnel::onKeepAliveTick()
 
     if (m_pingOutstanding) {
         // ping ghabli bi javab monde: ertebat morde
-        fprintf(stderr, "yamux: keepalive timeout, closing tunnel fd=%d\n", fd());
+        NR_LOG(netrector::LOG_ERROR, "yamux: keepalive timeout, closing tunnel fd=%d", fd());
         close(true);
         return;
     }
@@ -299,7 +300,7 @@ void MultiplexedTunnel::shutdown(GoAwayCode code) {
 
 void MultiplexedTunnel::protocolError(const char *what)
 {
-    fprintf(stderr, "yamux: protocol error (%s), closing tunnel fd=%d\n", what, fd());
+    NR_LOG(netrector::LOG_ERROR, "yamux: protocol error (%s), closing tunnel fd=%d", what, fd());
     shutdown(GoAwayCode::ProtocolError);
 }
 
@@ -643,8 +644,8 @@ MultiplexedTunnel::Stream *MultiplexedTunnel::acceptStream(uint32_t streamId)
         return nullptr;
     }
 
-    if (m_localGoAway || !m_onNewStream) {
-        // stream jadid ghabul nemikonim
+    if (m_localGoAway || !m_onNewStream || m_liveStreams >= m_maxStreams) {
+        // stream jadid ghabul nemikonim (ya saghf-e stream ha por shode)
         sendFrame(FrameType::WindowUpdate, FrameFlags::RST, streamId, 0);
         return nullptr;
     }
@@ -788,6 +789,6 @@ void MultiplexedTunnel::handleGoAwayFrame(uint32_t code) {
         return;
     }
 
-    fprintf(stderr, "yamux: GoAway received with error code %u, closing tunnel fd=%d\n", code, fd());
+    NR_LOG(netrector::LOG_ERROR, "yamux: GoAway received with error code %u, closing tunnel fd=%d", code, fd());
     close(true);    // handleOnClose hame stream ha ro mibande
 }

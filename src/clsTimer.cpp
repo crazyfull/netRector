@@ -1,4 +1,5 @@
 #include "clsTimer.h"
+#include "clsLog.h"
 #include "clsSocketList.h"
 #include "clsEpollReactor.h"
 
@@ -84,7 +85,7 @@ bool Timer::startInternal(int interval_ms, Callback cb, bool singleShot) {
 
     m_SocketContext.fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (m_SocketContext.fd == -1) {
-        perror("timerfd_create");
+        NR_PERROR("timerfd_create");
         return false;
     }
 
@@ -97,7 +98,7 @@ bool Timer::startInternal(int interval_ms, Callback cb, bool singleShot) {
     }
 
     if (timerfd_settime(m_SocketContext.fd, 0, &new_value, nullptr) == -1) {
-        perror("timerfd_settime");
+        NR_PERROR("timerfd_settime");
         ::close(m_SocketContext.fd);
         m_SocketContext.fd = -1;
         return false;

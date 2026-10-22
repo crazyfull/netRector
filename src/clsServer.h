@@ -9,7 +9,13 @@
 class Server
 {
 public:
-    explicit Server(int maxConnection, int shards = std::max(1u, std::thread::hardware_concurrency()));
+    // maxConnection: andaze-ye avaliye-ye jadval fd (khodesh roshd mikone); saghf-e vaghei ba setMaxConnections.
+    // bufferPoolSize: pool-e safe ersal har shard. maxEvents: batch-e epoll_wait.
+    explicit Server(int maxConnection, int shards = std::max(1u, std::thread::hardware_concurrency()),
+                    size_t bufferPoolSize = BUFFER_POOL_SIZE, int maxEvents = MAX_EVENTS);
+
+    // saghf-e connection haye TCP dar har shard (0 = bedone saghf)
+    void setMaxConnectionsPerShard(uint32_t n);
     ~Server();
 
     void setOnAccepted(EpollReactor::acceptCallback f, void *p);
