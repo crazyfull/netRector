@@ -15,12 +15,22 @@ CONFIG -= qt
 #   scripts/build_boringssl.sh  ->  third_party/boringssl/{include,lib}
 #   ya masire delkhah:  BORINGSSL_DIR=/opt/boringssl qmake
 # ---------------------------------------------------------------------------
-BORINGSSL_DIR = $$(BORINGSSL_DIR)
-isEmpty(BORINGSSL_DIR): BORINGSSL_DIR = $$PWD/third_party/boringssl
-!exists($$BORINGSSL_DIR/include/openssl/ssl.h): error("BoringSSL not found in $$BORINGSSL_DIR (run scripts/build_boringssl.sh or set BORINGSSL_DIR)")
+#BORINGSSL_DIR = $$(BORINGSSL_DIR)
+#isEmpty(BORINGSSL_DIR): BORINGSSL_DIR = $$PWD/third_party/boringssl
+#!exists($$BORINGSSL_DIR/include/openssl/ssl.h): error("BoringSSL not found in $$BORINGSSL_DIR (run scripts/build_boringssl.sh or set BORINGSSL_DIR)")
 
-INCLUDEPATH += $$BORINGSSL_DIR/include
-LIBS += -L$$BORINGSSL_DIR/lib -lssl -lcrypto -lpthread
+#INCLUDEPATH += $$BORINGSSL_DIR/include
+#LIBS += -L$$BORINGSSL_DIR/lib -lssl -lcrypto -lpthread
+
+unix:!macx {
+    INCLUDEPATH += $$PWD/libs/boringssl/include
+    DEPENDPATH += $$PWD/libs/boringssl/include
+
+    LIBS += \
+        $$PWD/libs/boringssl/libssl.a \
+        $$PWD/libs/boringssl/libcrypto.a \
+        -pthread -ldl
+}
 
 #LIBS += -luring
 LIBS += -static -static-libgcc -static-libstdc++
