@@ -8,8 +8,10 @@ Server::Server(int maxConnection, int shards, size_t bufferPoolSize, int maxEven
     // (BoringSSL ba send() bedone MSG_NOSIGNAL minevise)
     ::signal(SIGPIPE, SIG_IGN);
 
-    for(int i = 0; i < m_shardCount; ++i)
-        m_workerList.emplace_back(std::make_unique<EpollReactor> (i, maxConnection, maxEvents, bufferPoolSize));
+    for (int i = 0; i < m_shardCount; ++i)
+    {
+        m_workerList.emplace_back( std::unique_ptr<EpollReactor>(new EpollReactor(i, maxConnection, maxEvents, bufferPoolSize) ));
+    }
 }
 
 void Server::setMaxConnectionsPerShard(uint32_t n)

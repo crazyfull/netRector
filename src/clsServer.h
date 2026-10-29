@@ -5,6 +5,7 @@
 // ============================== Server / Server (10)(17)(18) =========
 #include <thread>
 #include <vector>
+#include <memory>
 
 class Server
 {
