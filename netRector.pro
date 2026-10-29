@@ -1,6 +1,6 @@
 TEMPLATE = app
 TARGET = netRector
-CONFIG += console c++17
+CONFIG += console c++11
 CONFIG -= app_bundle
 CONFIG -= qt
 #baraye rafe ye bug #mohem search beshe
