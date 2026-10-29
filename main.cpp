@@ -99,7 +99,9 @@ public:
     void onDatagram(const uint8_t* data, size_t len, const struct sockaddr* from, socklen_t fromLen) override {
         sendTo(data, len, from, fromLen);
     }
-    void onClose() override { LOG("[udp] closed"); }
+    void onClose() override {
+        LOG("[udp] closed");
+    }
 };
 
 static TCPSocket* acceptHttp(void* ctx)
