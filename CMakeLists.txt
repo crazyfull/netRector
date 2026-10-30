@@ -57,6 +57,12 @@ set(NETRECTOR_PUBLIC_HEADERS
     src/clsTimer.h
     src/clsTimerManager.h
     src/clsUDPSocket.h
+    src/tlsf.h
+    src/clsReactorObject.h
+    src/epoll.h
+    src/SocketContext.h
+    src/clsGCList.h
+    src/constants.h
 )
 
 add_custom_command(TARGET netRector POST_BUILD
