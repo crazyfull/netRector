@@ -16,6 +16,8 @@
 #include <fstream>
 //#define DEBUG 1
 
+namespace netrector {
+
 class EpollReactor;
 class DNSLookup {
 public:
@@ -123,5 +125,8 @@ private:
     void update_lru_cache(const std::string& hostname, const std::vector<std::string>& ips, DNSLookup::QUERY_TYPE qtype, uint32_t ttl);
     static uint64_t now_ms();
 };
+
+
+} // namespace netrector
 
 #endif // CLSDNSLOOKUP_H

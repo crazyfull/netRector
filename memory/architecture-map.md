@@ -23,4 +23,6 @@ Threading rule: everything belonging to a shard must be touched only from that s
 
 Perf decisions (2026-10-13, measured with bench/bench.sh vs nginx): listener sets NODELAY/keepalive once (accepted sockets inherit them on Linux — verified), close() without epoll_ctl(DEL), short recv == drained (except when the event carried RDHUP), multi-accept (up to 64 per event) is default because it beat one-accept-per-event by ~35% on connection-per-request load. (The unused vendored `concurrentqueue.h` and `lightweightsemaphore.h` were removed.)
 
-Related: [[project-overview]], [[known-issues-review-2026-10]].
+All library code lives in `namespace netrector`. TLS is optional: without BoringSSL at build time `NETRECTOR_HAS_TLS` is undefined, `TLSContext::createServer/createClient` return nullptr and `TCPSocket::enableTLS` returns false (guards in `clsTCPSocket.cpp` and `clsTLSContext.cpp`). After changing TCPSocket/MultiplexedTunnel read the ownership rules at the top of their headers and run `tests/run_tests.py` and `tests/muxstress/run_muxstress.sh asan`.
+
+Related: [[project-overview]].

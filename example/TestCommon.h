@@ -16,7 +16,9 @@ extern bool g_verbose;
 #define LOG(fmt, ...)  do { fprintf(stderr, fmt "\n", ##__VA_ARGS__); } while (0)
 #define VLOG(fmt, ...) do { if (g_verbose) fprintf(stderr, fmt "\n", ##__VA_ARGS__); } while (0)
 
-class TLSContext;
+// The example apps use the library unqualified (everything lives in namespace netrector).
+namespace netrector { class TLSContext; }
+using namespace netrector;
 
 struct TestConfig {
     // client

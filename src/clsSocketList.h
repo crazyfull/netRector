@@ -7,6 +7,8 @@
 #include "clsIntrusiveList.h"
 
 
+namespace netrector {
+
 class TCPSocket;
 enum SockTypes {
     IS_NOT_SET = 0,
@@ -59,5 +61,8 @@ public:
     SockInfo* slot(size_t i) { return i < m_list.size() ? m_list[i] : nullptr; }
     void forEachActive(std::function<void(SockInfo*)> callback);
 };
+
+
+} // namespace netrector
 
 #endif // CLSSOCKETLIST_H

@@ -7,6 +7,8 @@
 #include "clsUDPSocket.h"
 #include <netinet/in.h>
 
+namespace netrector {
+
 EpollReactor::EpollReactor(int id, int maxConnection, int max_events, size_t bufferPoolSize): m_reactorID(id), m_maxEvent(max_events), m_maxConnection(maxConnection), m_bufferPool(bufferPoolSize)
 {
     init();
@@ -832,3 +834,4 @@ void EpollReactor::shutdown_all() {
     m_GCList.flush_all();
 }
 
+} // namespace netrector

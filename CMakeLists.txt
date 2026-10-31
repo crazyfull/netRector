@@ -82,45 +82,59 @@ target_include_directories(netRector
         $<INSTALL_INTERFACE:include>
 )
 
-# BoringSSL: -DBORINGSSL_DIR=... or env BORINGSSL_DIR, default libs/boringssl
-# (scripts/build_boringssl.sh creates libs/boringssl/{include,lib}).
+# BoringSSL (optional): TLS support is compiled in only when BoringSSL is found.
+#   -DBORINGSSL_DIR=... or env BORINGSSL_DIR, default libs/boringssl
+#   (scripts/build_boringssl.sh creates libs/boringssl/{include,lib}).
+#   -DNETRECTOR_ENABLE_TLS=OFF skips the search and builds without TLS.
+# Without BoringSSL everything else works; TLSContext::createServer/createClient return nullptr
+# and TCPSocket::enableTLS() returns false.
+option(NETRECTOR_ENABLE_TLS "Enable TLS when BoringSSL is found" ON)
 set(BORINGSSL_DIR "" CACHE PATH "BoringSSL prefix (include/ and lib/ or libssl.a directly inside)")
-if(NOT BORINGSSL_DIR AND DEFINED ENV{BORINGSSL_DIR})
-    set(BORINGSSL_DIR "$ENV{BORINGSSL_DIR}")
+set(NETRECTOR_HAS_TLS OFF)
+
+if(NETRECTOR_ENABLE_TLS)
+    if(NOT BORINGSSL_DIR AND DEFINED ENV{BORINGSSL_DIR})
+        set(BORINGSSL_DIR "$ENV{BORINGSSL_DIR}")
+    endif()
+    if(NOT BORINGSSL_DIR)
+        set(BORINGSSL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/boringssl")
+    endif()
+
+    find_library(BORINGSSL_SSL
+        NAMES ssl
+        PATHS "${BORINGSSL_DIR}"
+        PATH_SUFFIXES lib
+        NO_DEFAULT_PATH
+    )
+    find_library(BORINGSSL_CRYPTO
+        NAMES crypto
+        PATHS "${BORINGSSL_DIR}"
+        PATH_SUFFIXES lib
+        NO_DEFAULT_PATH
+    )
+
+    if(BORINGSSL_SSL AND BORINGSSL_CRYPTO AND EXISTS "${BORINGSSL_DIR}/include/openssl/ssl.h")
+        set(NETRECTOR_HAS_TLS ON)
+    else()
+        message(WARNING "BoringSSL not found in '${BORINGSSL_DIR}': building WITHOUT TLS "
+                        "(run scripts/build_boringssl.sh or pass -DBORINGSSL_DIR=...)")
+    endif()
 endif()
-if(NOT BORINGSSL_DIR)
-    set(BORINGSSL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/boringssl")
+
+if(NETRECTOR_HAS_TLS)
+    message(STATUS "netRector: TLS enabled (BoringSSL: ${BORINGSSL_DIR})")
+    target_compile_definitions(netRector PUBLIC NETRECTOR_HAS_TLS=1)
+    target_include_directories(netRector PUBLIC "${BORINGSSL_DIR}/include")
+    target_link_libraries(netRector PUBLIC "${BORINGSSL_SSL}" "${BORINGSSL_CRYPTO}")
+else()
+    message(STATUS "netRector: TLS disabled")
 endif()
-set(BORINGSSL_ROOT "${BORINGSSL_DIR}")
-
-find_library(BORINGSSL_SSL
-    NAMES ssl
-    PATHS "${BORINGSSL_ROOT}"
-    PATH_SUFFIXES lib
-    NO_DEFAULT_PATH
-    REQUIRED
-)
-
-find_library(BORINGSSL_CRYPTO
-    NAMES crypto
-    PATHS "${BORINGSSL_ROOT}"
-    PATH_SUFFIXES lib
-    NO_DEFAULT_PATH
-    REQUIRED
-)
-
-target_include_directories(netRector
-    PUBLIC
-        "${BORINGSSL_ROOT}/include"
-)
 
 # System dependencies
 find_package(Threads REQUIRED)
 
 target_link_libraries(netRector
     PUBLIC
-        "${BORINGSSL_SSL}"
-        "${BORINGSSL_CRYPTO}"
         Threads::Threads
         ${CMAKE_DL_LIBS}
 )

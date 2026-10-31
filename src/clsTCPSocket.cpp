@@ -6,16 +6,29 @@
 #include "epoll.h"
 #include "clsDNSLookup.h"
 
+#ifdef NETRECTOR_HAS_TLS
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+#endif
 #include <algorithm>
 #include <climits>
 #include <vector>
 #include <sys/sendfile.h>
 
+namespace netrector {
+
 namespace {
+// TLS helpers: without BoringSSL (NETRECTOR_HAS_TLS undefined) m_ssl is always nullptr
+#ifdef NETRECTOR_HAS_TLS
+inline void sslFree(SSL*& ssl) { if (ssl) { SSL_free(ssl); ssl = nullptr; } }
+inline void sslShutdown(SSL* ssl) { SSL_shutdown(ssl); }
+#else
+inline void sslFree(SSL*&) {}
+inline void sslShutdown(SSL*) {}
+#endif
+
 // natije ioRead/ioWrite
 constexpr ssize_t IO_AGAIN = -1;
 constexpr ssize_t IO_ERROR = -2;
@@ -48,10 +61,7 @@ TCPSocket::~TCPSocket()
         m_SocketContext.fd = -1;
     }
 
-    if (m_ssl) {
-        SSL_free(m_ssl);
-        m_ssl = nullptr;
-    }
+    sslFree(m_ssl);
 
     delete m_connInfo;
 }
@@ -388,7 +398,7 @@ void TCPSocket::close(bool force) {
 void TCPSocket::drainComplete()
 {
     if (m_ssl && !m_writeShutdown)
-        SSL_shutdown(m_ssl);    // close_notify (best effort)
+        sslShutdown(m_ssl);     // close_notify (best effort)
 
     ::shutdown(m_SocketContext.fd, SHUT_WR);
     m_writeShutdown = true;
@@ -452,7 +462,7 @@ void TCPSocket::doShutdownWrite()
         return;
 
     if (m_ssl)
-        SSL_shutdown(m_ssl);
+        sslShutdown(m_ssl);
 
     ::shutdown(m_SocketContext.fd, SHUT_WR);
     m_writeShutdown = true;
@@ -490,10 +500,7 @@ void TCPSocket::finalizeClose()
         m_SocketContext.fd = -1;
     }
 
-    if (m_ssl) {
-        SSL_free(m_ssl);
-        m_ssl = nullptr;
-    }
+    sslFree(m_ssl);
 
     m_SocketContext.writeQueue.clear();
 
@@ -856,6 +863,11 @@ bool TCPSocket::enableTLS(TLSContext *ctx, const char *serverName)
     if (!ctx || status != Ready)
         return false;
 
+#ifndef NETRECTOR_HAS_TLS
+    NR_LOG(netrector::LOG_ERROR, "enableTLS: netRector was built without TLS support (BoringSSL not found)");
+    return false;
+#endif
+
     m_tlsCtx = ctx;
     if (serverName && *serverName)
         connInfo().serverName = serverName;
@@ -869,11 +881,16 @@ bool TCPSocket::isTLS() const
 
 const char *TCPSocket::tlsVersion() const
 {
+#ifdef NETRECTOR_HAS_TLS
     return m_ssl ? SSL_get_version(m_ssl) : "";
+#else
+    return "";
+#endif
 }
 
 std::string TCPSocket::tlsALPN() const
 {
+#ifdef NETRECTOR_HAS_TLS
     if (!m_ssl)
         return std::string();
 
@@ -881,7 +898,12 @@ std::string TCPSocket::tlsALPN() const
     unsigned len = 0;
     SSL_get0_alpn_selected(m_ssl, &data, &len);
     return std::string(reinterpret_cast<const char*>(data), len);
+#else
+    return std::string();
+#endif
 }
+
+#ifdef NETRECTOR_HAS_TLS
 
 bool TCPSocket::tlsStart(bool isServer)
 {
@@ -1000,12 +1022,22 @@ void TCPSocket::tlsKeyJobDone(TLSKeyJob *job)
         onReadable();   // data-ye app momkene hamrah-e Finished reside bashe
 }
 
+#else   // !NETRECTOR_HAS_TLS: never reached (enableTLS() refuses), kept so the class links
+
+bool TCPSocket::tlsStart(bool) { return false; }
+void TCPSocket::tlsHandshake() {}
+bool TCPSocket::tlsStartKeyJob(uint16_t, const uint8_t*, size_t) { return false; }
+void TCPSocket::tlsKeyJobDone(TLSKeyJob*) {}
+
+#endif
+
 // ----------------------------------------------------------------------------
 // io
 // ----------------------------------------------------------------------------
 // >0: tedad byte | 0: EOF | IO_AGAIN | IO_ERROR
 ssize_t TCPSocket::ioRead(char *buf, size_t cap)
 {
+#ifdef NETRECTOR_HAS_TLS
     if (m_ssl) {
         ERR_clear_error();
         int n = SSL_read(m_ssl, buf, (int)std::min<size_t>(cap, INT_MAX));
@@ -1036,6 +1068,7 @@ ssize_t TCPSocket::ioRead(char *buf, size_t cap)
             return IO_ERROR;
         }
     }
+#endif
 
     for (;;) {
         ssize_t n = ::recv(m_SocketContext.fd, buf, cap, 0);
@@ -1056,6 +1089,7 @@ ssize_t TCPSocket::ioRead(char *buf, size_t cap)
 // >0: tedad byte | IO_AGAIN | IO_ERROR
 ssize_t TCPSocket::ioWrite(const void *data, size_t len)
 {
+#ifdef NETRECTOR_HAS_TLS
     if (m_ssl) {
         ERR_clear_error();
         int n = SSL_write(m_ssl, data, (int)std::min<size_t>(len, INT_MAX));
@@ -1075,6 +1109,7 @@ ssize_t TCPSocket::ioWrite(const void *data, size_t len)
             return IO_ERROR;
         }
     }
+#endif
 
     for (;;) {
         ssize_t n = ::send(m_SocketContext.fd, data, len, MSG_NOSIGNAL | MSG_DONTWAIT);
@@ -1841,3 +1876,5 @@ void TCPSocket::setOnEOF(OnEOFFn fn, void *Arg)
     m_onEOF = fn;
     m_callbacksArg = Arg;
 }
+
+} // namespace netrector

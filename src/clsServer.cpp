@@ -2,6 +2,8 @@
 #include "clsLog.h"
 #include <future>
 
+namespace netrector {
+
 Server::Server(int maxConnection, int shards, size_t bufferPoolSize, int maxEvents): m_shardCount(shards > 0 ? shards : 1), m_needToStop(false)
 {
     // neveshtan roye socket baste shode nabayad process ro bekoshe
@@ -163,3 +165,5 @@ void Server::setup_signals() {
     if(sfd != -1)
         ::close(sfd);
 }
+
+} // namespace netrector

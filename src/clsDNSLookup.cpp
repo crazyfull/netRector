@@ -8,6 +8,8 @@
 #include <strings.h>
 #include <sys/random.h>
 
+namespace netrector {
+
 DNSLookup::DNSLookup(EpollReactor* reactor, size_t cache_ttl_sec, size_t cache_max_size) :
     m_pReactor(reactor),
     m_cache_max_size(cache_max_size),
@@ -711,3 +713,5 @@ void DNSLookup::update_lru_cache(const std::string& hostname, const std::vector<
         it->second.aaaa_time = stamp;
     }
 }
+
+} // namespace netrector

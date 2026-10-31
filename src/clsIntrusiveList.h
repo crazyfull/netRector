@@ -5,6 +5,8 @@
 #include <cstddef> // for offsetof
 
 
+namespace netrector {
+
 struct IntrusiveLink {
     IntrusiveLink *next {nullptr};
     IntrusiveLink *prev {nullptr};
@@ -76,5 +78,8 @@ public:
         }
     }
 };
+
+
+} // namespace netrector
 
 #endif // CLSINTRUSIVELIST_H

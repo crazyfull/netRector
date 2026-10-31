@@ -3,6 +3,8 @@
 #include "clsSocketList.h"
 #include "clsTCPSocket.h"
 
+namespace netrector {
+
 namespace {
 constexpr int MAX_UDP_BATCH = 64;        // hadeaksar datagram dar har recvmmsg
 constexpr int MAX_UDP_ROUNDS = 16;       // edalat beyne socket ha
@@ -320,3 +322,5 @@ void UDPSocket::finalizeClose()
     if (m_autoDelete && m_pReactor)
         m_pReactor->deleteLater(this);
 }
+
+} // namespace netrector

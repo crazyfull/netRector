@@ -1,5 +1,7 @@
 #include "clsListener.h"
 
+namespace netrector {
+
 Listener::Listener(EpollReactor* reactor) : m_pReactor(reactor) {}
 
 Listener::~Listener()
@@ -27,3 +29,5 @@ void Listener::stop()
         m_fd = -1;
     }
 }
+
+} // namespace netrector

@@ -27,6 +27,8 @@
 #include <unordered_map>
 #include <vector>
 
+using namespace netrector;
+
 // ----------------------------------------------------------------------------- stats
 struct Stats {
     std::atomic<uint64_t> streamsOpened{0}, streamsDone{0}, recordsSent{0}, recordsOk{0}, bytesSent{0}, bytesRecv{0};

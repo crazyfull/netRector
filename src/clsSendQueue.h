@@ -19,6 +19,8 @@
 //   External  : eshare be hafeze-ye app bedone copy (pushExternal); bad az ersal
 //               release seda zade mishe
 //   File      : baze-i az yek file (pushFile) ke ba sendfile ersal mishe
+namespace netrector {
+
 class SendQueue {
 public:
     enum ChunkKind : uint8_t { Pool = 0, Heap = 1, External = 2, File = 3 };
@@ -84,5 +86,8 @@ private:
     void freeChunk(Chunk* c);
     void append(Chunk* c);
 };
+
+
+} // namespace netrector
 
 #endif // CLSSENDQUEUE_H

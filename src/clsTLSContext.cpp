@@ -1,14 +1,21 @@
 #include "clsTLSContext.h"
 #include "clsTCPSocket.h"
 #include "clsEpollReactor.h"
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/evp.h>
-#include <openssl/rsa.h>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <thread>
+
+#ifdef NETRECTOR_HAS_TLS
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
+#endif
+
+namespace netrector {
+
+#ifdef NETRECTOR_HAS_TLS
 
 // ============================== TLSKeyWorkers ================================
 // thread pool-e emza. natije ba EpollReactor::post be thread-e reactor barmigarde.
@@ -322,3 +329,37 @@ bool TLSContext::setALPN(const std::vector<std::string> &protocols)
     }
     return true;
 }
+
+bool TLSContext::isSupported() { return true; }
+
+#else   // !NETRECTOR_HAS_TLS: BoringSSL was not found at build time, TLS is disabled
+
+static const char* const kNoTLS = "netRector was built without TLS support (BoringSSL not found)";
+
+bool TLSKeyMethod::startJob(TCPSocket* sock, uint16_t sigalg, const uint8_t* in, size_t len) { return sock->tlsStartKeyJob(sigalg, in, len); }
+TLSKeyJob* TLSKeyMethod::job(TCPSocket* sock) { return sock->tlsKeyJob(); }
+void TLSKeyMethod::clearJob(TCPSocket* sock) { sock->tlsClearKeyJob(); }
+
+TLSContext::~TLSContext() {}
+bool TLSContext::isSupported() { return false; }
+std::string TLSContext::lastErrorString() { return kNoTLS; }
+int TLSContext::socketExIndex() { return -1; }
+bool TLSContext::setALPN(const std::vector<std::string>&) { return false; }
+bool TLSContext::enableAsyncPrivateKey(int) { return false; }
+bool TLSContext::submitKeyJob(std::shared_ptr<TLSKeyJob>) { return false; }
+
+TLSContext* TLSContext::createServer(const char*, const char*, std::string* error)
+{
+    if (error) *error = kNoTLS;
+    return nullptr;
+}
+
+TLSContext* TLSContext::createClient(bool, const char*, std::string* error)
+{
+    if (error) *error = kNoTLS;
+    return nullptr;
+}
+
+#endif
+
+} // namespace netrector

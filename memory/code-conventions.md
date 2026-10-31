@@ -5,6 +5,7 @@ metadata:
   type: project
 ---
 
+- Everything in `src/` is in `namespace netrector` (example and tests use `using namespace netrector;`).
 - File names use a `cls` prefix for classes (`clsTCPSocket.cpp`), while the class itself has no prefix (`TCPSocket`).
 - Members are `m_camelCase`; pointer members are `m_pName`.
 - Comments are a mix of Finglish (Persian written in Latin letters), Persian script, and English. Match whichever the surrounding code uses.

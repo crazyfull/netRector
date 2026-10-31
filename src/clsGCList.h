@@ -16,6 +16,8 @@
 // List hazf ba takhir. Object ha hargez vasate callback delete nemishan;
 // reactor dar entehaye har dor az halghe event (noghte amn) flush ro seda mizane.
 // is not thread-safe: faghat az thread reactor.
+namespace netrector {
+
 template <typename T>
 class GCList {
     struct GCNode {
@@ -83,5 +85,8 @@ private:
 };
 
 
+
+
+} // namespace netrector
 
 #endif // CLSGCLIST_H

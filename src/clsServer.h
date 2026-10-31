@@ -7,6 +7,8 @@
 #include <vector>
 #include <memory>
 
+namespace netrector {
+
 class Server
 {
 public:
@@ -46,5 +48,8 @@ private:
     void setup_signals();
 
 };
+
+
+} // namespace netrector
 
 #endif // SERVER_H

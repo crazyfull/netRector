@@ -3,6 +3,8 @@
 #include <cstddef>
 
 // Epoll and Socket Constants
+namespace netrector {
+
 static constexpr int MAX_EVENTS = 1024;             // batch epoll_wait
 static constexpr int LISTEN_BACKLOG = 4096;
 static constexpr int MAX_ACCEPT_PER_EVENT = 64;     // fairness: max accept dar har event
@@ -47,5 +49,8 @@ constexpr int KEEPINTVL_SECS = 30;   // 30 sanie fasle beyne ersale har Probe
 constexpr int KEEPCNT_MAX = 4;       // maximum 4 ersal
 
 //KEEPIDLE_SECS + (KEEPCNT_MAX * KEEPINTVL_SECS) = 6 min
+
+
+} // namespace netrector
 
 #endif // CONSTANTS_H

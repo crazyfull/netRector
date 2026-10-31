@@ -11,6 +11,8 @@
 //   l->start(8080, "0.0.0.0", myAcceptFactory, ctx);
 //   ...
 //   l->stop();  delete l;
+namespace netrector {
+
 class Listener
 {
 public:
@@ -35,5 +37,8 @@ private:
     int m_fd = -1;
     int m_port = 0;
 };
+
+
+} // namespace netrector
 
 #endif // LISTENER_H

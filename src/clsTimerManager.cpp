@@ -7,6 +7,8 @@
 //#include <unistd.h>
 //#include <iostream>  // For perror, or use printf if preferred
 
+namespace netrector {
+
 TimerManager::TimerManager() {
     m_SocketContext.fd = -1;
 }
@@ -175,3 +177,5 @@ EpollReactor *TimerManager::getReactor() const
 {
     return m_pReactor;
 }
+
+} // namespace netrector

@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+namespace netrector {
+
 SendQueue::~SendQueue() {
     clear();
 }
@@ -206,3 +208,5 @@ void SendQueue::clear() {
     while (m_head)
         pop_front();
 }
+
+} // namespace netrector

@@ -4,6 +4,8 @@
 #include <cstdio>
 
 // saghfe roshd list (fd haye bozorgtar rad mishan)
+namespace netrector {
+
 static constexpr int SOCKET_LIST_HARD_LIMIT = 4 * 1024 * 1024;
 
 uint32_t SocketList::genIDCounter() const
@@ -131,3 +133,4 @@ void SocketList::remove(int fd) {
     }
 }
 
+} // namespace netrector
