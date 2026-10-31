@@ -3,6 +3,8 @@
 #include "clsSocketList.h"
 #include "clsEpollReactor.h"
 
+namespace netrector {
+
 Timer::Timer() {
     m_singleShotMode = false;
     m_pReactor = nullptr;
@@ -119,3 +121,5 @@ EpollReactor *Timer::getReactor() const
 {
     return m_pReactor;
 }
+
+} // namespace netrector

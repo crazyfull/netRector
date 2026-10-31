@@ -12,6 +12,8 @@
 // Har reactor roye yek thread ejra mishe. Hame method ha (be joz post/wake)
 // faghat az thread haman reactor ghabele estefade hastan.
 //class DNSLookup;
+namespace netrector {
+
 class TimerManager;
 class UDPSocket;
 class SocketList;
@@ -178,5 +180,8 @@ private:
     void runGarbageCollector();
 };
 
+
+
+} // namespace netrector
 
 #endif // CLSEPOLLREACTOR_H

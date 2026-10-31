@@ -6,6 +6,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
+namespace netrector {
+
 class EpollReactor;
 
 // ============================== UDPSocket ====================================
@@ -82,5 +84,8 @@ private:
     void readAll();
     void finalizeClose();
 };
+
+
+} // namespace netrector
 
 #endif // CLSUDPSOCKET_H

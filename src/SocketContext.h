@@ -11,6 +11,8 @@
 #include <sys/epoll.h>
 #include <chrono>
 
+namespace netrector {
+
 struct SocketContext
 {
     int fd { -1 };
@@ -20,4 +22,7 @@ struct SocketContext
     uint64_t lastActive {};
 
 };
+
+} // namespace netrector
+
 #endif // SOCKETCONTEXT_H

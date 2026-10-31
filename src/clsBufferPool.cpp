@@ -2,6 +2,8 @@
 #include "tlsf.h"
 #include <new>
 
+namespace netrector {
+
 BufferPool::BufferPool(size_t pool_size) {
     if (pool_size < 4096)
         pool_size = 4096;
@@ -36,3 +38,5 @@ void BufferPool::deallocate(void *ptr) {
     if (ptr)
         tlsf_free(m_tlsf, ptr);
 }
+
+} // namespace netrector

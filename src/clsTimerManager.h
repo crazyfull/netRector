@@ -6,6 +6,8 @@
 #include <chrono>
 #include "SocketContext.h"
 
+namespace netrector {
+
 class EpollReactor;
 class TimerManager {
 public:
@@ -41,5 +43,8 @@ private:
     std::multiset<std::pair<std::chrono::steady_clock::time_point, TimerId>> m_expirations;
     TimerId m_nextId = 0;
 };
+
+} // namespace netrector
+
 #endif // CLSTIMERMANAGER_H
 

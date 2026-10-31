@@ -8,6 +8,8 @@
 #include <algorithm>    // for std::min
 
 // Yamux Constants (https://github.com/hashicorp/yamux/blob/master/spec.md)
+namespace netrector {
+
 constexpr uint8_t YAMUX_VERSION = 0;
 constexpr uint32_t HEADER_SIZE = 12;
 constexpr uint32_t INITIAL_WINDOW_SIZE = 256 * 1024;
@@ -235,5 +237,8 @@ private:
     void stopKeepAlive();
     void onKeepAliveTick();
 };
+
+
+} // namespace netrector
 
 #endif // CLSMULTIPLEXEDTUNNEL_H

@@ -15,6 +15,8 @@
 // forward declaration (BoringSSL)
 typedef struct ssl_st SSL;
 
+namespace netrector {
+
 class Server;
 class EpollReactor;
 class TLSContext;
@@ -307,5 +309,8 @@ private:
 };
 
 
+
+
+} // namespace netrector
 
 #endif // CLSTCPSOCKET_H

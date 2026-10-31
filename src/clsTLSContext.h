@@ -12,6 +12,8 @@
 typedef struct ssl_ctx_st SSL_CTX;
 typedef struct ssl_st SSL;
 typedef struct evp_pkey_st EVP_PKEY;
+namespace netrector {
+
 class EpollReactor;
 class TLSKeyWorkers;
 class TCPSocket;
@@ -46,6 +48,10 @@ struct TLSKeyMethod {
 //            sock->enableTLS(ctx);  sock->connectTo("example.com", 443);
 class TLSContext {
 public:
+    // false when netRector was built without BoringSSL: createServer/createClient then return
+    // nullptr (reason in *error) and TCPSocket::enableTLS() returns false. Everything else works.
+    static bool isSupported();
+
     // certChainFile: PEM (leaf + intermediate ha), privateKeyFile: PEM
     static TLSContext* createServer(const char* certChainFile, const char* privateKeyFile, std::string* error = nullptr);
 
@@ -88,5 +94,8 @@ private:
     EVP_PKEY* m_privateKey { nullptr };
     TLSKeyWorkers* m_workers { nullptr };
 };
+
+
+} // namespace netrector
 
 #endif // CLSTLSCONTEXT_H

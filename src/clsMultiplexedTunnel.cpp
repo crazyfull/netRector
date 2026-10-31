@@ -7,6 +7,8 @@
 
 // --- Public API ---
 
+namespace netrector {
+
 MultiplexedTunnel::MultiplexedTunnel(bool isClient) :
     m_isClient(isClient),
     m_nextStreamId(isClient ? 1 : 2)    // client: fard, server: zoj
@@ -792,3 +794,5 @@ void MultiplexedTunnel::handleGoAwayFrame(uint32_t code) {
     NR_LOG(netrector::LOG_ERROR, "yamux: GoAway received with error code %u, closing tunnel fd=%d", code, fd());
     close(true);    // handleOnClose hame stream ha ro mibande
 }
+
+} // namespace netrector
