@@ -173,4 +173,4 @@ python3 tests/run_tests.py [--bin build-asan/netRector]   # integration: direct,
 tests/muxstress/build.sh && tests/muxstress/run_muxstress.sh asan   # run after changing TCPSocket or MultiplexedTunnel
 ```
 
-`src/tlsf.c` and `src/tlsf.h` are vendored third-party code: do not edit. Layout: `src/` library, `example/` example app, `tests/` integration/stress tests and the Python Yamux server (`tests/yamux_server/`), `bench/` nginx comparison (`bench/RESULTS.md`), `scripts/` build helpers, `docker/` dev image, `docs/NAMING.md` naming standard (not applied yet), `memory/` maintainer notes.
+`src/tlsf.c` and `src/tlsf.h` are vendored third-party code: do not edit. Layout: `src/` library, `example/` example app, `tests/` integration/stress tests and the Python Yamux server (`tests/yamux_server/`), `bench/` nginx comparison (`bench/RESULTS.md`), `scripts/` build helpers, `docker/` dev image, `memory/` maintainer notes.
