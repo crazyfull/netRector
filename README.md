@@ -1,6 +1,6 @@
 # netRector
 
-Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS via BoringSSL, optional (see rule 18). All library code is in `namespace netrector`. Library code is `src/`; `example/` is a test app (SOCKS5 over Yamux tunnel, HTTP bench server, UDP echo) that doubles as example code.
+Linux-only (epoll), C++17 networking library: asynchronous TCP (plain or TLS), UDP, timers, async DNS and a Yamux stream multiplexer, for many concurrent connections. MIT licensed (`LICENSE`, `THIRD_PARTY_LICENSES.md`). TLS via BoringSSL, optional (see rule 18). All library code is in `namespace netrector`. Library code is `src/`; `example/` is a test app (SOCKS5 over Yamux tunnel, HTTP bench server, UDP echo) that doubles as example code.
 
 ## Mental model
 
@@ -170,6 +170,7 @@ BoringSSL is optional: if it is not found CMake prints a warning and builds with
 
 ```sh
 python3 tests/run_tests.py [--bin build-asan/netRector]   # integration: direct, tunnel, tls, tls-ca, py, py-tls
+tests/go_yamux/build.sh   # then add: --extserver tests/go_yamux/goyamux   -> interop with hashicorp/yamux v0.1.2 (ext, ext-tls, extclient, extclient-tls); needs Go or Docker
 tests/muxstress/build.sh && tests/muxstress/run_muxstress.sh asan   # run after changing TCPSocket or MultiplexedTunnel
 ```
 

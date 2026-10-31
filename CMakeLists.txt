@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(netRector
     VERSION 1.0.0
+    DESCRIPTION "Asynchronous epoll TCP/UDP/TLS networking library with a Yamux multiplexer"
     LANGUAGES C CXX
 )
 
