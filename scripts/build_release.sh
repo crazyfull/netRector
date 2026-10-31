@@ -8,9 +8,10 @@ for arch in "${@:-amd64 arm64}"; do
     out="linux-x86_64"; [ "$arch" = "arm64" ] && out="linux-arm64"
     docker build --platform "linux/$arch" -t "netrector-dev-$arch" docker/
     docker run --rm --platform "linux/$arch" -v "$ROOT":/work -w /work "netrector-dev-$arch" bash -c "
-        export QT_SELECT=qt5
-        rm -rf /tmp/b && mkdir /tmp/b && cd /tmp/b
-        qmake /work/netRector.pro CONFIG+=release >/dev/null && make -j\$(nproc) 2>&1 | grep -E ' error ' || true
-        strip netRector && mkdir -p /work/build/$out && cp netRector /work/build/$out/netRector"
+        set -e
+        rm -rf /tmp/b
+        cmake -S /work -B /tmp/b -DCMAKE_BUILD_TYPE=Release -DNETRECTOR_STATIC=ON >/dev/null
+        cmake --build /tmp/b -j\$(nproc)
+        strip /tmp/b/netRector && mkdir -p /work/build/$out && cp /tmp/b/netRector /work/build/$out/netRector"
     echo "built: build/$out/netRector"
 done

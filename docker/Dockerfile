@@ -2,14 +2,13 @@
 #
 #   docker build -t netrector-dev docker/
 #   docker run --rm -it -v "$PWD":/work -w /work netrector-dev bash
-#   # inside:  qmake netRector.pro -o build/Makefile && make -C build -j"$(nproc)"
+#   # inside:  scripts/build.sh        (CMake; BORINGSSL_DIR is already set)
 #
 # BoringSSL is built once into /opt/boringssl (headers + static libs).
 FROM ubuntu:24.04
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential cmake ninja-build git ca-certificates \
-        qt5-qmake qtchooser \
         python3 curl openssl iproute2 procps file \
         nginx wrk \
     && rm -rf /var/lib/apt/lists/*

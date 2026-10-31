@@ -1,6 +1,6 @@
 # netRector
 
-Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS via BoringSSL. Library code is `src/`. Every `.h`/`.cpp` in the repo root is a test app (SOCKS5 over Yamux tunnel, HTTP bench server, UDP echo) and doubles as example code. Persian docs: `docs/README.fa.md`.
+Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS via BoringSSL. Library code is `src/`; `example/` is a test app (SOCKS5 over Yamux tunnel, HTTP bench server, UDP echo) that doubles as example code. Persian docs: `docs/README.fa.md`.
 
 ## Mental model
 
@@ -43,7 +43,7 @@ Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS v
 **Server lifecycle**
 21. Block `SIGINT`/`SIGTERM` in the main thread before constructing `Server` so worker threads inherit the mask, then `sigwait` in main (see snippet). `Server` ignores `SIGPIPE`.
 22. `Server::stop()` closes every socket with `close(true)` on its own shard, so your `onClose` callbacks run during `stop()`. Everything those callbacks touch must still be alive. Destroy your objects and the `TLSContext` only after `stop()` returned. `~Server` calls `stop()`.
-23. Raise `RLIMIT_NOFILE` before creating `Server` (`main.cpp` shows how). `Server(maxConnection, ...)` is only the initial fd-table size, it grows. When fds run out, new connections are rejected and accepting pauses for 200 ms. Hard caps: `Server::setMaxConnectionsPerShard(n)`.
+23. Raise `RLIMIT_NOFILE` before creating `Server` (`example/main.cpp` shows how). `Server(maxConnection, ...)` is only the initial fd-table size, it grows. When fds run out, new connections are rejected and accepting pauses for 200 ms. Hard caps: `Server::setMaxConnectionsPerShard(n)`.
 24. Timers: `reactor->addTimer(ms, fn, singleShot=false)` returns an id for `removeTimer(id)`. Call on the shard thread (or inside `post`). If the lambda captures a pointer to an object that can die, call `removeTimer` in that object's `onClose`.
 
 **Names**
@@ -163,11 +163,13 @@ IPv4 nameservers only; no DNS TCP fallback or negative cache; no `AF_UNIX`; cann
 
 ## Build and test
 
-BoringSSL once: `scripts/build_boringssl.sh` (output `third_party/boringssl`, or set `BORINGSSL_DIR`). Then `scripts/build.sh` (qmake + make, output `build/netRector`). Debug with ASan/UBSan: `scripts/build_asan.sh`. Docker image for non-Linux hosts: `docker/`.
+CMake (`CMakeLists.txt`) is the only build system. It builds the static library `build/lib/libnetRector.a` (public headers copied to `build/include`) and the example app `build/netRector`.
+
+BoringSSL once: `scripts/build_boringssl.sh` (output `libs/boringssl/{include,lib}`; elsewhere: `-DBORINGSSL_DIR=...` or env `BORINGSSL_DIR`). Then `scripts/build.sh`, or by hand `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`. CMake options: `NETRECTOR_BUILD_EXAMPLE` (default ON when top-level), `NETRECTOR_STATIC` (static example binary). Using the library from another CMake project: `add_subdirectory(netRector)` and link target `netRector`. ASan/UBSan build: `scripts/build_asan.sh` (`build-asan/netRector`). Static release binaries via Docker: `scripts/build_release.sh`. Dev image for non-Linux hosts: `docker/`.
 
 ```sh
 python3 tests/run_tests.py [--bin build-asan/netRector]   # integration: direct, tunnel, tls, tls-ca, py, py-tls
 tests/muxstress/build.sh && tests/muxstress/run_muxstress.sh asan   # run after changing TCPSocket or MultiplexedTunnel
 ```
 
-Third-party files in `src/` (`concurrentqueue.h`, `tlsf.c/.h`) and the root `lightweightsemaphore.h` are vendored: do not edit. `src/concurrentqueue.h` is unused. Maintainer notes: `memory/`. Benchmarks vs nginx: `bench/RESULTS.md`.
+`src/tlsf.c` and `src/tlsf.h` are vendored third-party code: do not edit. Layout: `src/` library, `example/` example app, `tests/` integration/stress tests and the Python Yamux server (`tests/yamux_server/`), `bench/` nginx comparison (`bench/RESULTS.md`), `scripts/` build helpers, `docker/` dev image, `docs/` extra docs and the 2026-10 code review (`docs/report/index.html`), `memory/` maintainer notes.

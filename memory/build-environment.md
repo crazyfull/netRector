@@ -5,9 +5,9 @@ metadata:
   type: project
 ---
 
-Linux-only (epoll, timerfd, eventfd, accept4). Needs BoringSSL (scripts/build_boringssl.sh -> third_party/boringssl, or BORINGSSL_DIR).
+Linux-only (epoll, timerfd, eventfd, accept4). Needs BoringSSL (scripts/build_boringssl.sh -> libs/boringssl, or BORINGSSL_DIR; build system is CMake).
 
-On the user's Mac (arm64): Docker Desktop must be started (`open -a Docker`). Image `socketmanager-dev` from docker/Dockerfile has qmake, g++ 13 and BoringSSL in /opt/boringssl.
+On the user's Mac (arm64): Docker Desktop must be started (`open -a Docker`). Image `socketmanager-dev` from docker/Dockerfile has cmake, g++ 13 and BoringSSL in /opt/boringssl.
 
     docker run --rm -v "$PWD":/work -w /work socketmanager-dev bash -c 'QT_SELECT=qt5 scripts/build.sh && scripts/build_asan.sh && python3 tests/run_tests.py --bin build-asan/epoll_new'
 

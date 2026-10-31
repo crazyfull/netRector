@@ -2,7 +2,7 @@
 
 این سند قاعده‌ی واحد نام‌گذاری **کلاس‌ها و تابع‌ها** (و چیزهای هم‌خانواده‌شان: نوع‌ها، enum، عضوها، پارامترها) را مشخص می‌کند و در بخش ۳ فهرست دقیق تغییرها را می‌دهد.
 
-- **دامنه:** `src/` و فایل‌های ریشه‌ی پروژه (`main.cpp`، `Socks5*.h`، `TunnelClient.h`، `HttpTest.h`، `TestCommon.h`). `tests/muxstress/muxstress.cpp` بررسی نشده است.
+- **دامنه:** `src/` و پوشه‌ی `example/` (`main.cpp`، `Socks5*.h`، `TunnelClient.h`، `HttpTest.h`، `TestCommon.h`). `tests/muxstress/muxstress.cpp` بررسی نشده است.
 - **وضعیت:** کد هنوز تغییر نکرده؛ این سند استاندارد و جدول «فعلی ← استاندارد» است.
 - **قاعده‌ی انتخاب:** هر جا کد چند سبک داشت، سبکی انتخاب شد که در کد فعلی غالب است تا کمترین تغییر لازم شود: کلاس‌ها `PascalCase`، متدها `camelCase`، عضوها `m_` + `camelCase`، ثابت‌ها `UPPER_SNAKE`.
 
@@ -38,14 +38,14 @@
 
 ## ۲. استثناها
 
-- کد شخص ثالث دست نمی‌خورد: `src/concurrentqueue.h`، `src/tlsf.c`، `src/tlsf.h`، `lightweightsemaphore.h`.
+- کد شخص ثالث دست نمی‌خورد: `src/tlsf.c`، `src/tlsf.h`.
 - نام‌هایی که API بیرونی تعیین می‌کند (callback های BoringSSL، سیستم‌کال‌ها، macro های `epoll`).
 - نام‌های خود پروتکل در enum: `SYN`، `ACK`، `FIN`، `RST` (Yamux) و `A`، `AAAA` (DNS).
 - برای کلاس‌های ساختار داده (`IntrusiveList`، `SendQueue`، `GCList`) استثنای «سبک STL» **نداریم**: `pushBack`، `popFront`، نه `push_back`، `pop_front`. اسم‌های تک‌کلمه‌ای (`size`، `empty`، `front`، `clear`) خودبه‌خود درست‌اند.
 
 ## ۳. جدول تغییرها
 
-اولویت: **P1** = API عمومی (روی فراخواننده‌ها اثر می‌گذارد: `main.cpp`، فایل‌های ریشه، `tests/`)، **P2** = داخلی (private/static/عضو)، **P3** = اختیاری یا تغییر امضا.
+اولویت: **P1** = API عمومی (روی فراخواننده‌ها اثر می‌گذارد: `example/`، `tests/`)، **P2** = داخلی (private/static/عضو)، **P3** = اختیاری یا تغییر امضا.
 
 ### نوع‌ها و enum
 
@@ -155,9 +155,9 @@
 | `MultiplexedTunnel::protocolError(const char*)` | `raiseProtocolError` | P2 |
 | `EPOLL_LISTINER_EVENTS` (در `epoll.h`، املا) | `EPOLL_LISTENER_EVENTS` | P2 |
 
-### کد ریشه (برنامه‌ی تست)
+### کد `example/` (برنامه‌ی تست)
 
-نام کلاس‌ها (`Socks5Session`، `TunnelClientEndpoint`، `HttpConn`، …) و تابع‌های `main.cpp`/`Socks5*.h`/`TunnelClient.h` با استاندارد جور هستند. دو مورد اختیاری (P3): `usage()` ← `printUsage()` و `replyFromErrno()` ← `makeReplyFromErrno()` (اول نام فعل).
+نام کلاس‌ها (`Socks5Session`، `TunnelClientEndpoint`، `HttpConn`، …) و تابع‌های `example/main.cpp`/`Socks5*.h`/`TunnelClient.h` با استاندارد جور هستند. دو مورد اختیاری (P3): `usage()` ← `printUsage()` و `replyFromErrno()` ← `makeReplyFromErrno()` (اول نام فعل).
 
 ## ۴. اجرا
 
@@ -166,7 +166,7 @@
 ترتیب پیشنهادی:
 
 1. یک commit برای P2 (داخلی)، چون فراخواننده‌ی بیرونی ندارد.
-2. یک commit برای P1، همراه اصلاح فراخواننده‌ها در `main.cpp`، فایل‌های ریشه و `tests/`.
+2. یک commit برای P1، همراه اصلاح فراخواننده‌ها در `example/` و `tests/`.
 3. بعد از هر commit: `scripts/build.sh` و `python3 tests/run_tests.py`.
 4. P3 را جدا و در صورت نیاز.
 

@@ -9,7 +9,7 @@ metadata:
 - Members are `m_camelCase`; pointer members are `m_pName`.
 - Comments are a mix of Finglish (Persian written in Latin letters), Persian script, and English. Match whichever the surrounding code uses.
 - `#mohem` ("important") in a comment marks a spot the author considers risky or unresolved. Search for it before changing nearby code.
-- Notes to self and TODOs for the whole project are kept as comments at the top of `netRector.pro`.
+- Notes to self and TODOs for the whole project were kept as comments at the top of `netRector.pro` (removed when the project moved to CMake only; see git history).
 - Debug output is plain `printf`, often left in hot paths; there is no logging abstraction.
 - Hot paths prefer C function pointers plus a `void*` argument over `std::function`.
 

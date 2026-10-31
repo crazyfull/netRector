@@ -8,8 +8,8 @@ topologies and drives them with a small blocking SOCKS5 client:
   tunnel   : netRector client  <-yamux/TCP->  netRector server
   tls      : netRector client  <-yamux/TLS->  netRector server   (--insecure)
   tls-ca   : same, client verifies the certificate (--ca, --sni localhost)
-  py       : netRector client  <-yamux/TCP->  yamux_server/server.py
-  py-tls   : netRector client  <-yamux/TLS->  yamux_server/server.py
+  py       : netRector client  <-yamux/TCP->  tests/yamux_server/server.py
+  py-tls   : netRector client  <-yamux/TLS->  tests/yamux_server/server.py
   ext[-tls]: netRector client  <-yamux->      any other server given with --extserver
 
 usage:  python3 tests/run_tests.py [--bin build/netRector] [--only tunnel,tls] [--threads N] [-v]
@@ -550,7 +550,7 @@ def test_udp(args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bin", default=os.path.join(ROOT, "build", "netRector"))
-    ap.add_argument("--pyserver", default=os.path.join(ROOT, "yamux_server", "server.py"))
+    ap.add_argument("--pyserver", default=os.path.join(ROOT, "tests", "yamux_server", "server.py"))
     ap.add_argument("--extserver", default="", help="external yamux server binary (topologies ext, ext-tls)")
     ap.add_argument("--only", default="")
     ap.add_argument("--tests", default="", help="substring filter for test names")
