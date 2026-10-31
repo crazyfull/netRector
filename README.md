@@ -1,6 +1,6 @@
 # netRector
 
-Linux-only (epoll), C++17 networking library: asynchronous TCP (plain or TLS), UDP, timers, async DNS and a Yamux stream multiplexer, for many concurrent connections. MIT licensed (`LICENSE`, `THIRD_PARTY_LICENSES.md`). TLS via BoringSSL, optional (see rule 18). All library code is in `namespace netrector`. Library code is `src/`; `example/` is a test app (SOCKS5 over Yamux tunnel, HTTP bench server, UDP echo) that doubles as example code.
+Linux-only (epoll), C++17 networking library: asynchronous TCP (plain or TLS), UDP, timers, async DNS and a Yamux stream multiplexer, for many concurrent connections. Licensed under LGPL-2.1-or-later (`LICENCE`; third-party notices in `THIRD_PARTY_LICENSES.md`). TLS via BoringSSL, optional (see rule 18). All library code is in `namespace netrector`. Library code is `src/`; `example/` is a test app (SOCKS5 over Yamux tunnel, HTTP bench server, UDP echo) that doubles as example code.
 
 ## Mental model
 
