@@ -1,187 +1,173 @@
 # netRector
 
-کتابخانه‌ی شبکه‌ی عمومی بر پایه‌ی `epoll` برای تعداد اتصال زیاد و کارایی بالا (فقط لینوکس، C++17).
-کد کتابخانه در `src/` است. فایل‌های ریشه‌ی پروژه فقط برنامه‌ی تست و بنچمارک هستند؛ تونل و پروکسی
-یکی از کاربردهای آن است، نه هدف اصلی.
+Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS via BoringSSL. Library code is `src/`. Every `.h`/`.cpp` in the repo root is a test app (SOCKS5 over Yamux tunnel, HTTP bench server, UDP echo) and doubles as example code. Persian docs: `docs/README.fa.md`.
 
-| مسیر | محتوا |
-|---|---|
-| `src/` | کتابخانه: reactor، `TCPSocket` (ساده و TLS)، `MultiplexedTunnel` (Yamux)، DNS، تایمر |
-| `main.cpp` و `*.h` در ریشه | برنامه‌ی تست با حالت‌های `client`، `server`، `socks5`، `http` (بنچمارک) و `udp` |
-| `bench/` | بنچمارک مقابل nginx (`bench/bench.sh`) و نتایج (`bench/RESULTS.md`) |
-| `yamux_server/` | سرور تست Yamux با Python (پروژه‌ی جدا، فقط standard library) |
-| `tests/run_tests.py` | تست یکپارچه‌ی خودکار؛ `tests/go_yamux/` ابزار سازگاری با `hashicorp/yamux` |
-| `tests/muxstress/` | تست سنگین multiplexing: کلاینت/سرور با راستی‌آزمایی داده، relay شکننده‌ی بسته، fuzz ([README](tests/muxstress/README.md)) |
-| `scripts/`، `docker/` | اسکریپت‌های build و محیط لینوکسی |
-| `report/` | گزارش بررسی کد و وضعیت هر یافته |
-| `backup/` | نسخه‌ی اصلی فایل‌ها قبل از تغییرات |
+## Mental model
 
-## Build
+- `Server` owns N `EpollReactor` shards, one thread each (default: CPU count). Each shard has its own epoll fd (edge-triggered), listener sockets (`SO_REUSEPORT`), fd table, send-buffer pool, DNS resolver and timers. Shards share nothing except `TLSContext`.
+- A connection is a `TCPSocket` (or subclass) bound to exactly one shard. All its methods and callbacks run on that shard's thread.
+- You subclass `TCPSocket`, override `onXxx` hooks (or register C function-pointer callbacks), and return new instances from an accept factory: `TCPSocket* factory(void* ctx)`.
 
-BoringSSL لازم است. یک بار آن را بسازید:
+## Rules (breaking one causes a crash, leak, deadlock or silent data loss)
 
-```sh
-scripts/build_boringssl.sh          # خروجی: third_party/boringssl/{include,lib}
-scripts/build.sh                    # qmake + make، خروجی: build/netRector
-```
+**Ownership and lifetime**
+1. Create sockets with `new`. After accept, or after `connectTo()` returned `true`, the reactor owns the socket: never `delete` it, call `close()`. It is deleted at the end of the current loop iteration, after `onClose`, so `this` stays valid until your callback chain returns. Null out any pointer you keep to it inside `onClose`.
+2. `connectTo()` returning `false` means no callback was or will be called and you still own the object: `delete` it.
+3. `onClose` is called exactly once and is always the last callback. A failed connect calls `onConnectFailed` and then `onClose`. `closeReason()` says why: `ClosedByApp`, `ClosedByPeer`, `ClosedByError` (see `getErrorCode()`), `ClosedByTimeout`, `ConnectFailed`.
+4. `setAutoDelete(false)` is for sockets that are members of another object: the owner deletes only after `onClose` has run, never inside it.
 
-اگر BoringSSL جای دیگری است: `BORINGSSL_DIR=/opt/boringssl scripts/build.sh`.
-در Qt Creator هم همان `netRector.pro` باز می‌شود (متغیر محیطی `BORINGSSL_DIR` را در تنظیمات build بگذارید).
+**Threads**
+5. Touch a socket, reactor, timer or DNS object only from its shard thread. From any other thread use `reactor->post(std::function<void()>)`. Thread-safe: `post`, `wake`, `Server::AddNewListener/start/stop/isRunning/getShard/getRoundRobinShard/shardCount`.
+6. A posted task runs later. The socket may be closed by then, so re-validate state inside the task instead of capturing raw socket pointers whose lifetime you do not control.
+7. Never block in a callback (sleep, blocking I/O, heavy CPU). It stalls every connection on that shard. Offload to your own thread and `post` the result back.
+8. State shared by all connections of one shard: `reactor->setUserData(p)`. State shared across shards needs your own locking.
 
-روی macOS یا ویندوز از Docker استفاده کنید:
+**Data**
+9. Pointers passed to callbacks are valid only until the callback returns: `onReceiveData` data (one shared 64 KB buffer per reactor), `onDatagram` data, Yamux `onData` data, DNS `ips`. Copy what you keep. TCP is a byte stream: buffer partial messages yourself.
+10. `send()`/`sendv()`/`sendNoCopy()`/`sendFile()` return `bool`. Check it. `false` means: not `Connected` (before `onConnected`/`onAccepted`, while closing, after close), per-socket queue cap exceeded (`setMaxSendQueue`, default 64 MB; the connection stays open), write error or out of memory (the socket is then closed). `send()` never calls `onClose` from inside itself; that close happens at the end of the loop iteration.
+11. `sendNoCopy(ptr, len, release, arg)`: `ptr` must stay valid until `release(ptr, arg)` is called (also called on close). `release == nullptr` means static data. `sendFile(fd, off, len)`: keep `fd` open until the data is sent; zero-copy on plain TCP, `pread` on TLS.
+12. Backpressure: when a socket's send queue exceeds `BACK_PRESSURE` (128 KB) `onPause` fires, at `LOW_WATERMARK` (64 KB) `onResume`. Default `onPause`/`onResume` pause/resume reading from the same socket, which is right for echo. A relay must instead pause reading from the source socket (`setOnPause`/`setOnResume` on the destination, as in the relay example). Ignoring it grows memory up to the 64 MB cap.
 
-```sh
-docker build -t netrector-dev docker/
-docker run --rm -it -v "$PWD":/work -w /work netrector-dev bash
-# داخل کانتینر:
-QT_SELECT=qt5 scripts/build.sh
-```
+**Callbacks**
+13. Per event, if a function-pointer callback was registered with `setOnXxx(fn, arg)` it is used and the virtual `onXxx` is not called. All `setOnXxx` calls on one socket share one `arg` (the last call wins), so always pass the same owner pointer.
+14. `close()` is graceful by default (flush send queue, send FIN, wait up to 5 s for peer FIN). `close(true)` drops queued data and closes now. Both are safe to call from any callback on the shard thread, including `onReceiveData`.
+15. By default a peer FIN closes the socket after the send queue drains. For half-close call `setAllowHalfClose(true)`: you then get `onReadEOF`, can keep sending, and finish with `shutdownWrite()` or `close()`.
+16. `pause_reading()`/`resume_reading()` call no callbacks.
 
-`scripts/build_asan.sh` یک نسخه‌ی debug با AddressSanitizer و UBSan در `build-asan/` می‌سازد.
+**Connect and TLS**
+17. Outbound: `setReactor(reactor)` first, then `connectTo(host, port)` on the shard thread. `host` is an IP literal or a name (resolved asynchronously, all returned addresses are tried). Valid once, while status is `Ready`. Result arrives via `onConnected` or `onConnectFailed`, possibly before `connectTo` returns. Connect plus handshake timeout: 15 s. Outbound sockets get `TCP_NODELAY` only; for keepalive call `setSocketKeepAlive(fd(), true)` in `onConnected`.
+18. `TLSContext` is created once (`createServer(certFile, keyFile, &err)` or `createClient(verifyPeer, caFile, &err)`), shared by all sockets and shards, and must outlive every socket that uses it: delete it only after `Server::stop()` returned. `createClient(true)` verifies against system CAs or `caFile`.
+19. `enableTLS(ctx, serverName=nullptr)` must be called while the socket is `Ready`: in the accept factory, or before `connectTo`. It returns `false` otherwise. With TLS, `onAccepted`/`onConnected` fire after the handshake; do not send earlier. `serverName` sets SNI and the name checked in the certificate (default: the host given to `connectTo`).
+20. `ctx->enableAsyncPrivateKey(threads)` (server contexts only, call once, before any connection) moves handshake signing to worker threads and restricts ciphers to ECDHE.
 
-## اجرای برنامه‌ی تست
+**Server lifecycle**
+21. Block `SIGINT`/`SIGTERM` in the main thread before constructing `Server` so worker threads inherit the mask, then `sigwait` in main (see snippet). `Server` ignores `SIGPIPE`.
+22. `Server::stop()` closes every socket with `close(true)` on its own shard, so your `onClose` callbacks run during `stop()`. Everything those callbacks touch must still be alive. Destroy your objects and the `TLSContext` only after `stop()` returned. `~Server` calls `stop()`.
+23. Raise `RLIMIT_NOFILE` before creating `Server` (`main.cpp` shows how). `Server(maxConnection, ...)` is only the initial fd-table size, it grows. When fds run out, new connections are rejected and accepting pauses for 200 ms. Hard caps: `Server::setMaxConnectionsPerShard(n)`.
+24. Timers: `reactor->addTimer(ms, fn, singleShot=false)` returns an id for `removeTimer(id)`. Call on the shard thread (or inside `post`). If the lambda captures a pointer to an object that can die, call `removeTimer` in that object's `onClose`.
 
-```sh
-# سرور تونل (C++)؛ با --cert/--key روی TLS
-build/netRector server --listen 0.0.0.0:9191 --cert cert.pem --key key.pem
+**Names**
+25. Names in this README are the current ones and are inconsistent (`AddNewListener`, `register_fd`, `getReactor`, `pause_reading`). Use them exactly as written; do not "correct" them to one style. Planned renames are listed in `docs/NAMING.md`.
 
-# یا سرور تونل Python (معادل همان)
-python3 yamux_server/server.py --listen 0.0.0.0:9191 --tls-cert cert.pem --tls-key key.pem
-
-# کلاینت: SOCKS5 محلی، هر اتصال یک stream روی تونل
-build/netRector client --server 1.2.3.4:9191 --listen 127.0.0.1:1080 --tls --insecure
-
-# پروکسی SOCKS5 مستقیم، بدون تونل
-build/netRector socks5 --listen 127.0.0.1:1080
-
-curl --socks5-hostname 127.0.0.1:1080 https://example.com/
-
-# سرور HTTP ساده برای بنچمارک (پاسخ ثابت یا یک فایل با sendfile)، با یا بدون TLS
-build/netRector http --listen 0.0.0.0:8080 --threads 4 [--file big.bin] [--cert c --key k --tls-threads 4]
-
-# UDP echo (تست UDPSocket)
-build/netRector udp --listen 127.0.0.1:5353
-```
-
-| گزینه | معنی |
-|---|---|
-| `--tls` | کلاینت با TLS وصل می‌شود و گواهی سرور را بررسی می‌کند |
-| `--ca FILE` | فایل CA برای بررسی گواهی (پیش‌فرض: CAهای سیستم) |
-| `--sni NAME` | نام مورد انتظار در گواهی (پیش‌فرض: همان host) |
-| `--insecure` | TLS بدون بررسی گواهی (برای گواهی self-signed) |
-| `--threads N` | تعداد reactor. در حالت `client` هر reactor تونل خودش را دارد |
-| `--keepalive SEC` | فاصله‌ی ping تونل؛ `0` یعنی خاموش (پیش‌فرض ۳۰) |
-| `--stats SEC` | چاپ دوره‌ای تعداد fd و stream |
-| `--tls-threads N` | عملیات کلید خصوصی handshake روی N thread جدا (`server` و `http`) |
-| `--single-accept` | یک accept در هر event به‌جای حداکثر ۶۴ تا |
-| `-v` | لاگ هر اتصال و هر stream |
-
-برای ساخت گواهی آزمایشی: `yamux_server/gen_cert.sh`.
-
-## تست خودکار
-
-```sh
-python3 tests/run_tests.py                       # همه‌ی حالت‌ها
-python3 tests/run_tests.py --only tunnel,tls     # فقط بعضی حالت‌ها
-python3 tests/run_tests.py --threads 4
-python3 tests/run_tests.py --bin build-asan/netRector
-```
-
-حالت‌ها: `direct`، `tunnel`، `tls`، `tls-ca` (C++ به C++) و `py`، `py-tls` (کلاینت C++ به سرور Python).
-هر حالت ۱۱ تست دارد: echo، مقصد IPv6، دانلود و آپلود ۶۴ مگابایتی با بررسی hash، half-close،
-۱۰۰ stream هم‌زمان، خطای اتصال و DNS، backpressure، قطع ناگهانی، نشت fd و قطع و وصل تونل.
-
-تست سنگین multiplexing (بافر پر، فریم‌های تکه‌تکه، فریم‌های خراب، TLS):
-
-```sh
-tests/muxstress/build.sh && tests/muxstress/run_muxstress.sh asan
-```
-
-## بنچمارک مقابل nginx
-
-```sh
-docker run --rm --ulimit nofile=1048576:1048576 -v "$PWD":/work -w /work netrector-dev bench/bench.sh 4 10
-```
-
-سرورها روی ۴ هسته و `wrk` روی بقیه pin می‌شوند. نتیجه‌ی آخرین اجرا در [bench/RESULTS.md](bench/RESULTS.md).
-
-## استفاده از TLS در کتابخانه
+## Quick start: TCP echo server
 
 ```cpp
-#include "clsTLSContext.h"
+#include "clsServer.h"
+#include <csignal>
 
-// سرور: یک بار ساخته می‌شود و بین همه‌ی اتصال‌ها مشترک است
-TLSContext* tls = TLSContext::createServer("cert.pem", "key.pem", &error);
+class Echo : public TCPSocket {
+public:
+    void onReceiveData(const uint8_t* d, size_t n) override { send(d, n); }
+};
+static TCPSocket* makeEcho(void*) { return new Echo(); }   // nullptr = reject connection
 
-TCPSocket* onAccept(void* ctx) {
-    MySocket* s = new MySocket;
-    s->enableTLS(static_cast<TLSContext*>(ctx));   // onAccepted بعد از handshake می‌آید
-    return s;
+int main() {
+    sigset_t s; sigemptyset(&s); sigaddset(&s, SIGINT); sigaddset(&s, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &s, nullptr);              // before Server (rule 21)
+    Server srv(65536);                                    // shards = CPU count
+    if (!srv.AddNewListener(8080, "0.0.0.0", makeEcho, nullptr) || !srv.start())
+        return 1;                                         // start() does not block
+    int sig; sigwait(&s, &sig);
+    srv.stop();
 }
-srv.AddNewListener(443, "0.0.0.0", onAccept, tls);
-
-// کلاینت
-TLSContext* tls = TLSContext::createClient(true /*verify*/);
-sock->setReactor(reactor);
-sock->enableTLS(tls);                  // SNI و بررسی نام از host گرفته می‌شود
-sock->connectTo("example.com", 443);   // onConnected بعد از handshake می‌آید
 ```
 
-بعد از `enableTLS` بقیه‌ی API (`send`، `onReceiveData`، `close`، backpressure) بدون تغییر کار می‌کند.
-`MultiplexedTunnel` هم چون از `TCPSocket` ارث می‌برد روی TLS کار می‌کند.
+`bindIP`: `nullptr`/`"*"`/`"::"` = all interfaces (IPv4+IPv6), `"0.0.0.0"` = all IPv4, or one address. `AddNewListener` works before and after `start()` from any thread (up to 5 s wait per call). Listeners without their own factory use `srv.setOnAccepted(factory, ctx)`.
 
-**handshake غیرهمزمان:** با `tls->enableAsyncPrivateKey(threads)` امضای RSA/ECDSA در handshake (چند صد
-میکروثانیه) روی thread های جدا انجام می‌شود و حلقه‌ی reactor بلاک نمی‌شود. بقیه‌ی handshake (ECDHE، هش)
-مثل nginx در خود reactor می‌ماند. با فعال شدن این گزینه فقط cipher های ECDHE پذیرفته می‌شوند.
-
-## ارسال بدون کپی و فایل
+## Outbound connection (optionally TLS)
 
 ```cpp
-sock->send(buf, len);                       // اگر صف خالی باشد مستقیم به کرنل، وگرنه یک کپی به صف
-sock->sendv(iov, n);                        // چند تکه در یک syscall (writev)
-sock->sendNoCopy(ptr, len, release, arg);   // بدون کپی؛ release وقتی ارسال تمام شد (یا با close) صدا زده می‌شود
-sock->sendNoCopy(staticBuf, len);           // داده‌ی ثابت (static): بدون release
-sock->sendFile(fd, offset, len);            // sendfile از page cache (روی TLS با pread)
+class Client : public TCPSocket {
+public:
+    void onConnected() override { send("hello", 5); }          // after handshake if TLS
+    void onReceiveData(const uint8_t* d, size_t n) override { close(); }
+    void onConnectFailed() override { /* onClose follows */ }
+    void onClose() override { /* last callback */ }
+};
+
+EpollReactor* reactor = srv.getRoundRobinShard();
+reactor->post([reactor, tlsCtx]() {                            // must run on the shard thread
+    Client* c = new Client();
+    c->setReactor(reactor);
+    if (tlsCtx) c->enableTLS(tlsCtx, "example.com");
+    if (!c->connectTo("example.com", 443)) delete c;           // rule 2
+});
 ```
 
-## UDP و Listener
+## Relay with backpressure (function-pointer callbacks)
 
 ```cpp
-class Echo : public UDPSocket {
+struct Relay { TCPSocket* a; TCPSocket* b; };                  // a -> b
+static void onDataA(void* p, const uint8_t* d, size_t n) { static_cast<Relay*>(p)->b->send(d, n); }
+static void onPauseB(void* p)  { static_cast<Relay*>(p)->a->pause_reading(); }
+static void onResumeB(void* p) { static_cast<Relay*>(p)->a->resume_reading(); }
+// a->setOnData(onDataA, r);  b->setOnPause(onPauseB, r);  b->setOnResume(onResumeB, r);
+// Also handle onClose on both sides: close the other one and clear pointers in Relay.
+```
+
+## UDP
+
+```cpp
+class UdpEcho : public UDPSocket {
+public:
     void onDatagram(const uint8_t* d, size_t n, const sockaddr* from, socklen_t l) override { sendTo(d, n, from, l); }
 };
-Echo* u = new Echo;  u->setReactor(reactor);  u->bind("0.0.0.0", 5353, /*reusePort*/ true);
-// دریافت با recvmmsg (چند datagram در یک syscall)؛ بستن با u->close() و حذف توسط reactor
-
-Listener* l = new Listener(reactor);  l->start(8080, "0.0.0.0", acceptFactory, ctx);  l->stop();
+UdpEcho* u = new UdpEcho();
+u->setReactor(reactor);                         // required before bind()
+if (!u->bind("0.0.0.0", 5353, /*reusePort*/ true)) delete u;   // one socket per shard
 ```
 
-## تغییرات API کتابخانه
+`UDPSocket`: `open(family)`, `bind`, `connect`+`send`, `sendTo`, `close()`, `setMaxDatagramSize` (default 2048), `setOnDatagram/setOnClose(fn, arg)`, `setAutoDelete`, `getErrorCode`. Reads use `recvmmsg`. There is no UDP send queue.
 
-کدی که قبلاً از کتابخانه استفاده می‌کرده باید این موارد را رعایت کند:
+## Yamux multiplexing: `MultiplexedTunnel` (is a `TCPSocket`)
 
-- **مالکیت:** شیء `TCPSocket` باید با `new` ساخته شود. بعد از accept یا `connectTo() == true` مالک آن reactor است و بعد از `onClose` خودش حذف می‌شود. اگر سوکت عضو یک کلاس دیگر است، `setAutoDelete(false)` بزنید.
-- **`onClose`:** دقیقاً یک بار و به‌عنوان آخرین callback صدا زده می‌شود. خطای اتصال اول `onConnectFailed` و بعد `onClose` می‌دهد.
-- **`connectTo`:** اگر `false` برگرداند هیچ callbackی صدا زده نشده و شیء هنوز مال شماست. اگر `true` برگرداند نتیجه با callback می‌آید و ممکن است قبل از برگشت تابع آمده باشد.
-- **`send`:** حالا `bool` برمی‌گرداند. خطا داخل خود `send` باعث `onClose` نمی‌شود؛ بسته شدن به انتهای همان دور حلقه منتقل می‌شود.
-- **`close()`:** پیش‌فرض graceful است: صف ارسال خالی می‌شود، FIN فرستاده می‌شود و تا FIN طرف مقابل (حداکثر ۵ ثانیه) صبر می‌کند. `close(true)` فوری است.
-- **`onPause` / `onResume`:** یعنی صف ارسال همین سوکت از حد بالا گذشت یا به حد پایین رسید. رفتار پیش‌فرض توقف خواندن از همان سوکت است؛ پروکسی‌ها باید خواندن از طرف مقابل را متوقف کنند. `pause_reading` و `resume_reading` دیگر callback صدا نمی‌زنند.
-- **half-close:** با `setAllowHalfClose(true)`، دریافت FIN به `onReadEOF` می‌رسد و سوکت برای نوشتن باز می‌ماند. `shutdownWrite()` سمت نوشتن را می‌بندد.
-- **بافر خواندن:** هر reactor یک بافر مشترک ۶۴ کیلوبایتی دارد. اشاره‌گر داده فقط تا پایان `onReceiveData` معتبر است (قبلاً هم همین بود).
-- **thread:** همه‌ی متدها فقط از thread همان reactor. از thread دیگر با `EpollReactor::post(...)`.
-- **listener:** پارامتر `bindIP` حالا واقعاً اعمال می‌شود. `nullptr` یا `"*"` یعنی همه‌ی اینترفیس‌ها (IPv4 و IPv6). هر listener می‌تواند factory خودش را داشته باشد.
-- **Yamux:** برای هر stream علاوه بر `onData` و `onClose`، callbackهای `onRemoteFin`، `onPause` و `onResume` هست. `pauseStream` و `resumeStream` جریان دریافت را کنترل می‌کنند. `closeStream(id)` یعنی FIN و `closeStream(id, true)` یعنی RST. توضیح کامل در `src/clsMultiplexedTunnel.h`.
-- **لاگ:** پیام‌های کتابخانه از `netrector::setLogHandler(fn)` رد می‌شوند (پیش‌فرض stderr)؛ سطح با `setLogLevel`.
-- **دلیل بستن:** در `onClose` با `closeReason()` (ByApp / ByPeer / ByError / ByTimeout / ConnectFailed) و `getErrorCode()`.
-- **سقف‌ها:** `setMaxSendQueue(bytes)` سقف سخت صف ارسال هر سوکت (پیش‌فرض ۶۴MB؛ بیشتر از آن `send` با ENOBUFS رد می‌شود و اتصال باز می‌ماند)، `Server::setMaxConnectionsPerShard(n)`، `MultiplexedTunnel::setMaxStreams(n)` (پیش‌فرض ۴۰۹۶).
-- **اتصال خروجی:** همه‌ی IPهای پاسخ DNS نگه داشته می‌شوند و اگر اولی refused/unreachable بود بعدی امتحان می‌شود؛ TTL پاسخ DNS رعایت می‌شود.
-- **timeout:** اتصال و handshake بعد از ۱۵ ثانیه قطع می‌شوند. `setIdleTimeout(sec)` برای اتصال‌های بیکار اختیاری است. بررسی timeout ها تکه‌تکه انجام می‌شود (هر ۲۵۰ms بخشی از جدول)، پس با هزاران اتصال stall دوره‌ای ندارد.
-- **حافظه:** اتصال بیکار هیچ تخصیص heap ندارد (صف ارسال intrusive است و بافر خواندن مشترک). اگر pool پر شود صف از `malloc` استفاده می‌کند؛ اتصال قطع نمی‌شود. اندازه‌ی pool هر reactor با پارامتر سازنده‌ی `Server`/`EpollReactor` قابل تنظیم است.
-- **syscall ها:** گزینه‌های سوکت (NODELAY, keepalive) روی listener تنظیم می‌شوند و به اتصال‌های accept شده به ارث می‌رسند (۵ setsockopt کمتر برای هر اتصال)؛ بستن fd بدون `epoll_ctl(DEL)`؛ `recv` کوتاه یعنی بافر خالی است و `recv` اضافه برای EAGAIN زده نمی‌شود؛ اتصال‌های خروجی فقط NODELAY می‌گیرند (keepalive در صورت نیاز در `onConnected` با `setSocketKeepAlive(fd(), true)`).
+```cpp
+MultiplexedTunnel* t = new MultiplexedTunnel(/*isClient*/ true);   // server side: false, from accept factory
+t->setReactor(reactor);  /* enableTLS optional */  t->connectTo(host, port);
+// after onConnected (override it in a subclass):
+uint32_t id = t->openStream(onData, onClose, arg);    // 0 = tunnel not usable (not connected / GoAway)
+t->sendToStream(id, buf, len);
+t->closeStream(id);                                   // FIN (half-close); closeStream(id, true) = RST, no callbacks after
+// server side: t->setOnNewStream(fn, arg), fn(void* arg, uint32_t id, Stream* s) sets s->onData, s->onClose, s->arg
+```
 
-## کارهای انجام‌نشده
+- Stream callbacks: `onData(arg, id, data, len)`, `onClose(arg, id)`, plus optional `onRemoteFin`, `onPause`, `onResume` set through `getStream(id)` or the `Stream*` in `onNewStream`. In `onNewStream` set only callback/arg fields and do not keep the `Stream*`.
+- `onClose` is the last callback of a stream, once (not after `closeStream(id, true)`). Stream ids are invalid afterwards. A tunnel `onClose` closes all streams.
+- `onPause` on a stream: stop calling `sendToStream` until `onResume`. To throttle incoming data use `pauseStream(id)`/`resumeStream(id)`.
+- `sendToStream`, `closeStream`, `openStream` are allowed inside stream callbacks. `detachStream(id)` clears the callbacks and lets the tunnel finish the stream itself; use it when your object dies before the stream.
+- Other: `setMaxStreams(n)` (default 4096; extra SYNs get RST), `setKeepAlive(sec)` (0 = off), `shutdown(GoAwayCode)`, `streamCount()`, virtual `onGoAway(code)`, `remoteGoAway()`. Window 256 KB, max frame payload 32 KB.
 
-- برنامه‌ی تست SOCKS5 احراز هویت ندارد. روی IP عمومی فقط با `--listen 127.0.0.1:...` اجرا کنید.
-- خواندن TLS از طریق `SSL_set_fd` است؛ BoringSSL برای هر record جدا می‌خواند. یک BIO سفارشی روی بافر مشترک reactor می‌تواند syscall های خواندن TLS را کمتر کند.
-- `MSG_ZEROCOPY` کرنل استفاده نمی‌شود (فقط برای ارسال‌های بزرگ‌تر از ~۱۰KB به‌صرفه است و ردیابی completion می‌خواهد).
-- DNS فقط سرورهای IPv4 از `/etc/resolv.conf` را می‌خواند و پاسخ‌های بزرگ‌تر از یک بسته‌ی UDP را دوباره با TCP نمی‌پرسد.
+## API reference (current names)
+
+**Server**: `Server(int maxConnection, int shards=cpus, size_t bufferPoolSize=200MB, int maxEvents=1024)`, `AddNewListener(port, bindIP, factory, ctx)`, `setOnAccepted`, `start`, `stop`, `isRunning`, `getShard(i)` (nullptr if out of range), `getRoundRobinShard`, `shardCount`, `setMaxConnectionsPerShard`, `setUseGarbageCollector(bool)` (default `false`: dead objects deleted at the end of every loop iteration; `true`: kept at least 10 s).
+
+**EpollReactor**: `post`, `wake`, `addTimer`, `removeTimer`, `id`, `userData/setUserData`, `connectionCount`, `tcpConnectionCount`, `setMaxConnections`, `setMultiAccept(bool)` (default true, up to 64 accepts per event), `setDeferAccept(sec)`, `add_listener(port, bindIP, factory, ctx)`, `remove_listener(fd)`, `getIPbyName(host, cb, arg, A|AAAA)` (callback may run before it returns), `cancelDNS(arg)`, `deleteLater`, `bufferPool`, `liveToken`. Normal code does not call `register_fd/add_fd/del_fd`.
+
+**TCPSocket** (status values `Ready, Connecting, Handshaking, Connected, Closing, Closed`):
+- Hooks: `onAccepted`, `onConnecting`, `onConnected`, `onConnectFailed`, `onReceiveData`, `onPause`, `onResume`, `onReadEOF`, `onClose`. Matching `setOnXxx(fn, arg)`; function types `OnDataFn = void(*)(void*, const uint8_t*, size_t)`, the others `void(*)(void*)`.
+- I/O: `send`, `sendv(iovec*, n)`, `sendNoCopy`, `sendFile`, `close(force=false)`, `shutdownWrite`, `connectTo`, `pause_reading`, `resume_reading`.
+- Config: `enableTLS`, `setAllowHalfClose`, `setAutoDelete`, `setIdleTimeout(sec)` (0 = off, default), `setMaxSendQueue(bytes)`, static `setSocketNoDelay/KeepAlive/Cork/LowDelay(fd, bool)`.
+- Info: `fd`, `getStatus`, `closeReason`, `getErrorCode`, `getPeerAddress(ip, port)`, `getLocalPort`, `pendingBytes`, `isWriteBlocked`, `isReadPaused`, `isAccepted`, `isTLS`, `tlsVersion`, `tlsALPN`, `tlsContext`, `getReactor`.
+
+**TLSContext**: `createServer`, `createClient`, `setALPN({"h2","http/1.1"})`, `enableAsyncPrivateKey(threads)`, `lastErrorString()`.
+
+**Log**: `netrector::setLogHandler(void(*)(int level, const char* msg))`, `setLogLevel(int)`; levels `LOG_ERROR, LOG_WARN, LOG_INFO` (default), `LOG_DEBUG`; default sink is stderr.
+
+## Constants (`src/constants.h`, `src/clsMultiplexedTunnel.h`)
+
+Read buffer 64 KB per reactor; send pool 200 MB per shard (falls back to `malloc` when full, connections are not dropped); `BACK_PRESSURE` 128 KB; `LOW_WATERMARK` 64 KB; `MAX_SEND_QUEUE` 64 MB; `MAX_ACCEPT_PER_EVENT` 64; `MAX_READS_PER_EVENT` 16; connect/handshake timeout 15 s; close drain 60 s; linger 5 s; keepalive 240 s idle, 30 s interval, 4 probes; DNS timeout 2 s, 3 retries, cache TTL 5 min, 2000 entries.
+
+## Known gaps
+
+IPv4 nameservers only; no DNS TCP fallback or negative cache; no `AF_UNIX`; cannot bind outbound source IP; no `SO_LINGER`/`TCP_USER_TIMEOUT` setters; no UDP send queue; `Server::stop` is not graceful (`close(true)`); sample SOCKS5 apps have no authentication (default listen `127.0.0.1`); long soak runs untested.
+
+## Build and test
+
+BoringSSL once: `scripts/build_boringssl.sh` (output `third_party/boringssl`, or set `BORINGSSL_DIR`). Then `scripts/build.sh` (qmake + make, output `build/netRector`). Debug with ASan/UBSan: `scripts/build_asan.sh`. Docker image for non-Linux hosts: `docker/`.
+
+```sh
+python3 tests/run_tests.py [--bin build-asan/netRector]   # integration: direct, tunnel, tls, tls-ca, py, py-tls
+tests/muxstress/build.sh && tests/muxstress/run_muxstress.sh asan   # run after changing TCPSocket or MultiplexedTunnel
+```
+
+Third-party files in `src/` (`concurrentqueue.h`, `tlsf.c/.h`) and the root `lightweightsemaphore.h` are vendored: do not edit. `src/concurrentqueue.h` is unused. Maintainer notes: `memory/`. Benchmarks vs nginx: `bench/RESULTS.md`.
