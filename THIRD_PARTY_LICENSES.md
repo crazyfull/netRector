@@ -1,6 +1,6 @@
 # Third-party licenses
 
-netRector itself is MIT licensed (see `LICENSE`). It includes or uses the following third-party code.
+netRector itself is licensed under LGPL-2.1-or-later (see `LICENCE`). It includes or uses the following third-party code.
 
 | Component | Where | License |
 |---|---|---|
