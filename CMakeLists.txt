@@ -82,12 +82,21 @@ target_include_directories(netRector
         $<INSTALL_INTERFACE:include>
 )
 
-# BoringSSL
-set(BORINGSSL_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/boringssl")
+# BoringSSL: -DBORINGSSL_DIR=... or env BORINGSSL_DIR, default libs/boringssl
+# (scripts/build_boringssl.sh creates libs/boringssl/{include,lib}).
+set(BORINGSSL_DIR "" CACHE PATH "BoringSSL prefix (include/ and lib/ or libssl.a directly inside)")
+if(NOT BORINGSSL_DIR AND DEFINED ENV{BORINGSSL_DIR})
+    set(BORINGSSL_DIR "$ENV{BORINGSSL_DIR}")
+endif()
+if(NOT BORINGSSL_DIR)
+    set(BORINGSSL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/boringssl")
+endif()
+set(BORINGSSL_ROOT "${BORINGSSL_DIR}")
 
 find_library(BORINGSSL_SSL
     NAMES ssl
     PATHS "${BORINGSSL_ROOT}"
+    PATH_SUFFIXES lib
     NO_DEFAULT_PATH
     REQUIRED
 )
@@ -95,6 +104,7 @@ find_library(BORINGSSL_SSL
 find_library(BORINGSSL_CRYPTO
     NAMES crypto
     PATHS "${BORINGSSL_ROOT}"
+    PATH_SUFFIXES lib
     NO_DEFAULT_PATH
     REQUIRED
 )
@@ -127,24 +137,36 @@ set_target_properties(netRector PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
-# Optional test executable
-option(NETRECTOR_BUILD_TESTS
-    "Build netRector test executable"
-    OFF
-)
+# Example/test application (example/main.cpp): SOCKS5-over-Yamux tunnel, HTTP bench server, UDP echo.
+# Built as build/netRector, which tests/ and bench/ expect.
+# Default ON when netRector is the top-level project, OFF when used via add_subdirectory().
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(NETRECTOR_EXAMPLE_DEFAULT ON)
+else()
+    set(NETRECTOR_EXAMPLE_DEFAULT OFF)
+endif()
+option(NETRECTOR_BUILD_EXAMPLE "Build the example application (build/netRector)" ${NETRECTOR_EXAMPLE_DEFAULT})
+option(NETRECTOR_STATIC "Link the example application fully static (release binaries)" OFF)
 
-#target_link_options(netRector PRIVATE -static  -static-libgcc  -static-libstdc++)
+if(NETRECTOR_BUILD_EXAMPLE)
+    add_executable(netRector_example example/main.cpp)
 
-if(NETRECTOR_BUILD_TESTS)
-    add_executable(netRector_tests main.cpp)
-
-    target_include_directories(netRector_tests
+    target_include_directories(netRector_example
         PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/example"
     )
 
-    target_link_libraries(netRector_tests
+    target_link_libraries(netRector_example
         PRIVATE
             netRector
     )
+
+    set_target_properties(netRector_example PROPERTIES
+        OUTPUT_NAME netRector
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+
+    if(NETRECTOR_STATIC)
+        target_link_options(netRector_example PRIVATE -static -static-libgcc -static-libstdc++)
+    endif()
 endif()
