@@ -3,6 +3,8 @@
 #include "clsTCPSocket.h"
 //#include "epoll.h"
 
+namespace netrector {
+
 class Timer {
 public:
     using Callback = std::function<void()>;
@@ -28,5 +30,8 @@ private:
     Callback m_callback;
     bool m_singleShotMode;
 };
+
+
+} // namespace netrector
 
 #endif // CLSTIMER_H

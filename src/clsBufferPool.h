@@ -5,6 +5,8 @@
 #include <tlsf.h>
 #include <cstddef>
 
+namespace netrector {
+
 class BufferPool {
 public:
     BufferPool(size_t pool_size = 1024 * 1024);
@@ -17,5 +19,8 @@ private:
     void* pool_ = nullptr;
     tlsf_t m_tlsf = nullptr;
 };
+
+
+} // namespace netrector
 
 #endif // CLSBUFFERPOOL_H

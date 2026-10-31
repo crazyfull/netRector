@@ -1,6 +1,6 @@
 # netRector
 
-Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS via BoringSSL. Library code is `src/`; `example/` is a test app (SOCKS5 over Yamux tunnel, HTTP bench server, UDP echo) that doubles as example code. Persian docs: `docs/README.fa.md`.
+Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS via BoringSSL, optional (see rule 18). All library code is in `namespace netrector`. Library code is `src/`; `example/` is a test app (SOCKS5 over Yamux tunnel, HTTP bench server, UDP echo) that doubles as example code.
 
 ## Mental model
 
@@ -36,7 +36,7 @@ Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS v
 
 **Connect and TLS**
 17. Outbound: `setReactor(reactor)` first, then `connectTo(host, port)` on the shard thread. `host` is an IP literal or a name (resolved asynchronously, all returned addresses are tried). Valid once, while status is `Ready`. Result arrives via `onConnected` or `onConnectFailed`, possibly before `connectTo` returns. Connect plus handshake timeout: 15 s. Outbound sockets get `TCP_NODELAY` only; for keepalive call `setSocketKeepAlive(fd(), true)` in `onConnected`.
-18. `TLSContext` is created once (`createServer(certFile, keyFile, &err)` or `createClient(verifyPeer, caFile, &err)`), shared by all sockets and shards, and must outlive every socket that uses it: delete it only after `Server::stop()` returned. `createClient(true)` verifies against system CAs or `caFile`.
+18. TLS is optional at build time. Without BoringSSL (`NETRECTOR_HAS_TLS` undefined) the library still builds and works for plain TCP/UDP, `TLSContext::createServer/createClient` return `nullptr` (reason in `*error`), `enableTLS()` returns `false`, and `TLSContext::isSupported()` is `false`. Always check the `createXxx` result. `TLSContext` is created once (`createServer(certFile, keyFile, &err)` or `createClient(verifyPeer, caFile, &err)`), shared by all sockets and shards, and must outlive every socket that uses it: delete it only after `Server::stop()` returned. `createClient(true)` verifies against system CAs or `caFile`.
 19. `enableTLS(ctx, serverName=nullptr)` must be called while the socket is `Ready`: in the accept factory, or before `connectTo`. It returns `false` otherwise. With TLS, `onAccepted`/`onConnected` fire after the handshake; do not send earlier. `serverName` sets SNI and the name checked in the certificate (default: the host given to `connectTo`).
 20. `ctx->enableAsyncPrivateKey(threads)` (server contexts only, call once, before any connection) moves handshake signing to worker threads and restricts ciphers to ECDHE.
 
@@ -47,13 +47,14 @@ Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS v
 24. Timers: `reactor->addTimer(ms, fn, singleShot=false)` returns an id for `removeTimer(id)`. Call on the shard thread (or inside `post`). If the lambda captures a pointer to an object that can die, call `removeTimer` in that object's `onClose`.
 
 **Names**
-25. Names in this README are the current ones and are inconsistent (`AddNewListener`, `register_fd`, `getReactor`, `pause_reading`). Use them exactly as written; do not "correct" them to one style. Planned renames are listed in `docs/NAMING.md`.
+25. Everything is in `namespace netrector`: write `netrector::Server` or `using namespace netrector;` (class names below are given unqualified). Method names are inconsistent (`AddNewListener`, `register_fd`, `getReactor`, `pause_reading`). Use them exactly as written; do not "correct" them to one style. Planned renames are listed in `docs/NAMING.md`.
 
 ## Quick start: TCP echo server
 
 ```cpp
 #include "clsServer.h"
 #include <csignal>
+using namespace netrector;
 
 class Echo : public TCPSocket {
 public:
@@ -149,9 +150,9 @@ t->closeStream(id);                                   // FIN (half-close); close
 - Config: `enableTLS`, `setAllowHalfClose`, `setAutoDelete`, `setIdleTimeout(sec)` (0 = off, default), `setMaxSendQueue(bytes)`, static `setSocketNoDelay/KeepAlive/Cork/LowDelay(fd, bool)`.
 - Info: `fd`, `getStatus`, `closeReason`, `getErrorCode`, `getPeerAddress(ip, port)`, `getLocalPort`, `pendingBytes`, `isWriteBlocked`, `isReadPaused`, `isAccepted`, `isTLS`, `tlsVersion`, `tlsALPN`, `tlsContext`, `getReactor`.
 
-**TLSContext**: `createServer`, `createClient`, `setALPN({"h2","http/1.1"})`, `enableAsyncPrivateKey(threads)`, `lastErrorString()`.
+**TLSContext**: `isSupported()`, `createServer`, `createClient`, `setALPN({"h2","http/1.1"})`, `enableAsyncPrivateKey(threads)`, `lastErrorString()`.
 
-**Log**: `netrector::setLogHandler(void(*)(int level, const char* msg))`, `setLogLevel(int)`; levels `LOG_ERROR, LOG_WARN, LOG_INFO` (default), `LOG_DEBUG`; default sink is stderr.
+**Log** (namespace-level functions): `netrector::setLogHandler(void(*)(int level, const char* msg))`, `setLogLevel(int)`; levels `LOG_ERROR, LOG_WARN, LOG_INFO` (default), `LOG_DEBUG`; default sink is stderr.
 
 ## Constants (`src/constants.h`, `src/clsMultiplexedTunnel.h`)
 
@@ -165,11 +166,11 @@ IPv4 nameservers only; no DNS TCP fallback or negative cache; no `AF_UNIX`; cann
 
 CMake (`CMakeLists.txt`) is the only build system. It builds the static library `build/lib/libnetRector.a` (public headers copied to `build/include`) and the example app `build/netRector`.
 
-BoringSSL once: `scripts/build_boringssl.sh` (output `libs/boringssl/{include,lib}`; elsewhere: `-DBORINGSSL_DIR=...` or env `BORINGSSL_DIR`). Then `scripts/build.sh`, or by hand `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`. CMake options: `NETRECTOR_BUILD_EXAMPLE` (default ON when top-level), `NETRECTOR_STATIC` (static example binary). Using the library from another CMake project: `add_subdirectory(netRector)` and link target `netRector`. ASan/UBSan build: `scripts/build_asan.sh` (`build-asan/netRector`). Static release binaries via Docker: `scripts/build_release.sh`. Dev image for non-Linux hosts: `docker/`.
+BoringSSL is optional: if it is not found CMake prints a warning and builds without TLS (also `-DNETRECTOR_ENABLE_TLS=OFF`; the example binary shrinks from ~29 MB to ~0.3 MB). To get TLS run `scripts/build_boringssl.sh` once (output `libs/boringssl/{include,lib}`; elsewhere: `-DBORINGSSL_DIR=...` or env `BORINGSSL_DIR`). Then `scripts/build.sh`, or by hand `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`. CMake options: `NETRECTOR_BUILD_EXAMPLE` (default ON when top-level), `NETRECTOR_STATIC` (static example binary). Using the library from another CMake project: `add_subdirectory(netRector)` and link target `netRector` (it brings the include path and `NETRECTOR_HAS_TLS`). Compiling the sources by hand with TLS needs `-DNETRECTOR_HAS_TLS=1` and the BoringSSL include path. ASan/UBSan build: `scripts/build_asan.sh` (`build-asan/netRector`). Static release binaries via Docker: `scripts/build_release.sh`. Dev image for non-Linux hosts: `docker/`.
 
 ```sh
 python3 tests/run_tests.py [--bin build-asan/netRector]   # integration: direct, tunnel, tls, tls-ca, py, py-tls
 tests/muxstress/build.sh && tests/muxstress/run_muxstress.sh asan   # run after changing TCPSocket or MultiplexedTunnel
 ```
 
-`src/tlsf.c` and `src/tlsf.h` are vendored third-party code: do not edit. Layout: `src/` library, `example/` example app, `tests/` integration/stress tests and the Python Yamux server (`tests/yamux_server/`), `bench/` nginx comparison (`bench/RESULTS.md`), `scripts/` build helpers, `docker/` dev image, `docs/` extra docs and the 2026-10 code review (`docs/report/index.html`), `memory/` maintainer notes.
+`src/tlsf.c` and `src/tlsf.h` are vendored third-party code: do not edit. Layout: `src/` library, `example/` example app, `tests/` integration/stress tests and the Python Yamux server (`tests/yamux_server/`), `bench/` nginx comparison (`bench/RESULTS.md`), `scripts/` build helpers, `docker/` dev image, `docs/NAMING.md` naming standard (not applied yet), `memory/` maintainer notes.

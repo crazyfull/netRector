@@ -11,4 +11,4 @@ The test program `example/main.cpp` has modes `client` / `server` (SOCKS5-over-Y
 
 The project lives at github.com/crazyfull/netRector (earlier, as of 2026-10-06, it was not a git repository).
 
-Related: [[architecture-map]], [[build-environment]], [[known-issues-review-2026-10]].
+Related: [[architecture-map]], [[build-environment]].

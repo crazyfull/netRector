@@ -3,17 +3,23 @@
 
 // Paye-ye hame object haiy ke reactor malekeshon mishe va ba deleteLater
 // (dar entehaye dor halghe) hazf mishan: TCPSocket, UDPSocket, ...
+#include <mutex>
+
+namespace netrector {
+
 class ReactorObject {
 public:
     virtual ~ReactorObject() = default;
 };
 
-#include <mutex>
 class EpollReactor;
 // token-e zende bodan-e reactor baraye thread haye dige: ghabl az post() ba mutex check mishe
 struct ReactorLiveToken {
     std::mutex mutex;
     EpollReactor* reactor { nullptr };
 };
+
+
+} // namespace netrector
 
 #endif // CLSREACTOROBJECT_H
