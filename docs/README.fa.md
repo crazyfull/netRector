@@ -1,32 +1,32 @@
 # netRector
 
 کتابخانه‌ی شبکه‌ی عمومی بر پایه‌ی `epoll` برای تعداد اتصال زیاد و کارایی بالا (فقط لینوکس، C++17).
-کد کتابخانه در `src/` است. فایل‌های ریشه‌ی پروژه فقط برنامه‌ی تست و بنچمارک هستند؛ تونل و پروکسی
+کد کتابخانه در `src/` است. پوشه‌ی `example/` فقط برنامه‌ی تست و بنچمارک است؛ تونل و پروکسی
 یکی از کاربردهای آن است، نه هدف اصلی.
 
 | مسیر | محتوا |
 |---|---|
 | `src/` | کتابخانه: reactor، `TCPSocket` (ساده و TLS)، `MultiplexedTunnel` (Yamux)، DNS، تایمر |
-| `main.cpp` و `*.h` در ریشه | برنامه‌ی تست با حالت‌های `client`، `server`، `socks5`، `http` (بنچمارک) و `udp` |
+| `example/` | برنامه‌ی تست با حالت‌های `client`، `server`، `socks5`، `http` (بنچمارک) و `udp` |
 | `bench/` | بنچمارک مقابل nginx (`bench/bench.sh`) و نتایج (`bench/RESULTS.md`) |
-| `yamux_server/` | سرور تست Yamux با Python (پروژه‌ی جدا، فقط standard library) |
+| `tests/yamux_server/` | سرور تست Yamux با Python (پروژه‌ی جدا، فقط standard library) |
 | `tests/run_tests.py` | تست یکپارچه‌ی خودکار؛ `tests/go_yamux/` ابزار سازگاری با `hashicorp/yamux` |
 | `tests/muxstress/` | تست سنگین multiplexing: کلاینت/سرور با راستی‌آزمایی داده، relay شکننده‌ی بسته، fuzz ([README](../tests/muxstress/README.md)) |
 | `scripts/`، `docker/` | اسکریپت‌های build و محیط لینوکسی |
-| `report/` | گزارش بررسی کد و وضعیت هر یافته |
-| `backup/` | نسخه‌ی اصلی فایل‌ها قبل از تغییرات |
+| `CMakeLists.txt` | تنها سیستم build: کتابخانه‌ی استاتیک `build/lib/libnetRector.a` و برنامه‌ی `build/netRector` |
+| `docs/report/` | گزارش بررسی کد و وضعیت هر یافته |
 
 ## Build
 
 BoringSSL لازم است. یک بار آن را بسازید:
 
 ```sh
-scripts/build_boringssl.sh          # خروجی: third_party/boringssl/{include,lib}
-scripts/build.sh                    # qmake + make، خروجی: build/netRector
+scripts/build_boringssl.sh          # خروجی: libs/boringssl/{include,lib}
+scripts/build.sh                    # CMake، خروجی: build/netRector و build/lib/libnetRector.a
 ```
 
 اگر BoringSSL جای دیگری است: `BORINGSSL_DIR=/opt/boringssl scripts/build.sh`.
-در Qt Creator هم همان `netRector.pro` باز می‌شود (متغیر محیطی `BORINGSSL_DIR` را در تنظیمات build بگذارید).
+در IDE ها (Qt Creator، CLion، VS Code) همان `CMakeLists.txt` باز می‌شود؛ گزینه‌ی `-DBORINGSSL_DIR=...` را در تنظیمات CMake بگذارید.
 
 روی macOS یا ویندوز از Docker استفاده کنید:
 
@@ -46,7 +46,7 @@ QT_SELECT=qt5 scripts/build.sh
 build/netRector server --listen 0.0.0.0:9191 --cert cert.pem --key key.pem
 
 # یا سرور تونل Python (معادل همان)
-python3 yamux_server/server.py --listen 0.0.0.0:9191 --tls-cert cert.pem --tls-key key.pem
+python3 tests/yamux_server/server.py --listen 0.0.0.0:9191 --tls-cert cert.pem --tls-key key.pem
 
 # کلاینت: SOCKS5 محلی، هر اتصال یک stream روی تونل
 build/netRector client --server 1.2.3.4:9191 --listen 127.0.0.1:1080 --tls --insecure
@@ -76,7 +76,7 @@ build/netRector udp --listen 127.0.0.1:5353
 | `--single-accept` | یک accept در هر event به‌جای حداکثر ۶۴ تا |
 | `-v` | لاگ هر اتصال و هر stream |
 
-برای ساخت گواهی آزمایشی: `yamux_server/gen_cert.sh`.
+برای ساخت گواهی آزمایشی: `tests/yamux_server/gen_cert.sh`.
 
 ## تست خودکار
 

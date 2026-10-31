@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Build BoringSSL (static libssl.a / libcrypto.a) into third_party/boringssl.
+# Build BoringSSL (static libssl.a / libcrypto.a) into libs/boringssl.
 # Needs: git, cmake (>= 3.22), ninja, a C++17 compiler.
 #
-#   scripts/build_boringssl.sh            # -> third_party/boringssl/{include,lib}
-#   scripts/build_boringssl.sh /opt/bssl  # custom prefix (then: BORINGSSL_DIR=/opt/bssl qmake)
+#   scripts/build_boringssl.sh            # -> libs/boringssl/{include,lib}
+#   scripts/build_boringssl.sh /opt/bssl  # custom prefix (then: cmake -DBORINGSSL_DIR=/opt/bssl)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PREFIX="${1:-$ROOT/third_party/boringssl}"
+PREFIX="${1:-$ROOT/libs/boringssl}"
 SRC="$(mktemp -d)"
 trap 'rm -rf "$SRC"' EXIT
 
