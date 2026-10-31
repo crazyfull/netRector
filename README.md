@@ -47,7 +47,7 @@ Linux-only (epoll), C++17 library for many concurrent TCP/UDP connections. TLS v
 24. Timers: `reactor->addTimer(ms, fn, singleShot=false)` returns an id for `removeTimer(id)`. Call on the shard thread (or inside `post`). If the lambda captures a pointer to an object that can die, call `removeTimer` in that object's `onClose`.
 
 **Names**
-25. Everything is in `namespace netrector`: write `netrector::Server` or `using namespace netrector;` (class names below are given unqualified). Method names are inconsistent (`AddNewListener`, `register_fd`, `getReactor`, `pause_reading`). Use them exactly as written; do not "correct" them to one style. Planned renames are listed in `docs/NAMING.md`.
+25. Everything is in `namespace netrector`: write `netrector::Server` or `using namespace netrector;` (class names below are given unqualified). Method names are inconsistent (`AddNewListener`, `register_fd`, `getReactor`, `pause_reading`). Use them exactly as written; do not "correct" them to one style.
 
 ## Quick start: TCP echo server
 
