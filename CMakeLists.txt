@@ -19,6 +19,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # help
 # cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+# cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNETRECTOR_BUILD_EXAMPLE=OFF -DNETRECTOR_ENABLE_TLS=ON -DNETRECTOR_STATIC=ON
 # cmake --build build -j"$(nproc)"
 
 # Static library output
