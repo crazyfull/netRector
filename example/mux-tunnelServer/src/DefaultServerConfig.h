@@ -10,7 +10,7 @@ namespace DefaultServerConfig {
 
 // Address the tunnel listener binds to (the CDN / client connects here).
 constexpr const char* ListenAddress = "0.0.0.0";
-constexpr uint16_t ListenPort = 9191;
+constexpr uint16_t ListenPort = 8080;
 
 // Websocket-style handshake. The client must send this Sec-WebSocket-Key (empty = accept any key).
 constexpr const char* WebSocketKey = "dGhlIHNhbXBsZSBub25jzQ==";
