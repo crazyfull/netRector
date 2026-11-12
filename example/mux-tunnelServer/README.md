@@ -56,6 +56,22 @@ overridden at run time:
 | `--threads N` | 0 | reactor threads, 0 = CPU count |
 | `-v` | | debug log |
 
+## Runtime statistics
+
+While the server runs, type `stats` + Enter in its terminal, or send `SIGUSR1` (works for a
+daemon too: `kill -USR1 <pid>`). Example:
+
+```
+tunnels:            3 active   (3 accepted, 0 handshakes rejected)
+channels (streams): 30 active   (30 total)
+target connections: 30 active   (30 total)
+  tunnel #1    127.0.0.1:46634        up 4s  channels 10 active / 10 total
+```
+
+A *channel* is one mux stream (one SOCKS5 request); a *target connection* is its outbound TCP
+connection once connected. Implemented in `ServerStats` / `TunnelStats` (atomic counters, no
+extra thread: the main thread waits on a signalfd and stdin).
+
 ## Source layout
 
 One class or function per file. Classes and enums are `PascalCase`, functions and methods
@@ -68,4 +84,5 @@ One class or function per file. Classes and enums are `PascalCase`, functions an
 | `WebSocketServerHandshake` | validates the request, builds the 101 / 404 responses |
 | `TargetConnection` | one stream: SOCKS5 request, connect to target, relay with back-pressure |
 | `Socks5RequestParser`, `Socks5Reply`, ... | SOCKS5 `CONNECT` (IPv4, IPv6, domain names) |
+| `ServerStats`, `TunnelStats` | runtime counters and the `stats` report |
 | `ServerConfig`, `DefaultServerConfig.h`, `ServerCommandLine` | configuration |

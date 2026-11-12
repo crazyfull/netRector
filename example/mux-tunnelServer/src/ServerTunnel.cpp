@@ -6,10 +6,11 @@
 
 using namespace netrector;
 
-ServerTunnel::ServerTunnel(const ServerConfig& config, const WebSocketServerHandshake& handshake)
+ServerTunnel::ServerTunnel(const ServerConfig& config, const WebSocketServerHandshake& handshake, ServerStats& stats)
     : MultiplexedTunnel(false)
     , m_config(config)
     , m_handshake(handshake)
+    , m_stats(stats)
 {
     setOnNewStream(&ServerTunnel::handleNewStream, this);
     setMaxStreams(config.maxStreamsPerTunnel);
@@ -70,6 +71,11 @@ void ServerTunnel::completeHandshake(size_t consumed)
     m_state = State::Established;
     setIdleTimeout(0);
 
+    std::string peerAddress;
+    uint16_t peerPort = 0;
+    getPeerAddress(peerAddress, peerPort);
+    m_tunnelStats = m_stats.addTunnel(peerAddress + ":" + std::to_string(peerPort));
+
     // mux bytes that arrived in the same read as the request
     std::string pending = m_handshakeBuffer.substr(consumed);
     std::string().swap(m_handshakeBuffer);
@@ -87,6 +93,7 @@ void ServerTunnel::rejectHandshake()
     getPeerAddress(peerAddress, peerPort);
     NR_LOG(LOG_INFO, "[server] handshake rejected from %s:%u", peerAddress.c_str(), peerPort);
 
+    m_stats.handshakeRejected();
     m_state = State::Rejected;
     std::string().swap(m_handshakeBuffer);
 
@@ -106,6 +113,10 @@ void ServerTunnel::onAccepted()
 void ServerTunnel::onClose()
 {
     NR_LOG(LOG_DEBUG, "[server] tunnel closed (fd closed, state=%d)", static_cast<int>(m_state));
+    if (m_tunnelStats) {
+        m_stats.removeTunnel(m_tunnelStats);
+        m_tunnelStats.reset();
+    }
 }
 
 void ServerTunnel::handleNewStream(void* argument, uint32_t streamId, Stream* stream)
@@ -115,5 +126,5 @@ void ServerTunnel::handleNewStream(void* argument, uint32_t streamId, Stream* st
 
     // The object registers itself as the stream's callback target and is owned by the reactor
     // once it is connected or closed.
-    new TargetConnection(tunnel, streamId, stream);
+    new TargetConnection(tunnel, streamId, stream, tunnel->m_stats, tunnel->m_tunnelStats);
 }
