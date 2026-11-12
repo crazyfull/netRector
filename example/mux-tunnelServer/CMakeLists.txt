@@ -29,6 +29,7 @@ add_executable(muxTunnelServer
     src/main.cpp
     src/ServerApplication.cpp
     src/ServerCommandLine.cpp
+    src/ServerStats.cpp
     src/ServerTunnel.cpp
     src/TargetConnection.cpp
     src/WebSocketServerHandshake.cpp
@@ -38,7 +39,7 @@ add_executable(muxTunnelServer
     src/parseUnsigned.cpp
     src/splitHostPort.cpp
     src/raiseFileDescriptorLimit.cpp
-    src/blockTerminationSignals.cpp
+    src/blockControlSignals.cpp
 )
 
 target_include_directories(muxTunnelServer PRIVATE src)

@@ -7,13 +7,18 @@
 #include "clsLog.h"
 
 #include <cstring>
+#include <utility>
 
 using namespace netrector;
 
-TargetConnection::TargetConnection(MultiplexedTunnel* tunnel, uint32_t streamId, MultiplexedTunnel::Stream* stream)
+TargetConnection::TargetConnection(MultiplexedTunnel* tunnel, uint32_t streamId, MultiplexedTunnel::Stream* stream,
+                                   ServerStats& stats, std::shared_ptr<TunnelStats> tunnelStats)
     : m_tunnel(tunnel)
     , m_streamId(streamId)
+    , m_stats(stats)
+    , m_tunnelStats(std::move(tunnelStats))
 {
+    m_stats.channelOpened(*m_tunnelStats);
     setReactor(tunnel->getReactor());
     setAllowHalfClose(true);        // FIN of the target becomes FIN of the stream and vice versa
 
@@ -25,12 +30,19 @@ TargetConnection::TargetConnection(MultiplexedTunnel* tunnel, uint32_t streamId,
     stream->onResume = &TargetConnection::onStreamResume;
 }
 
+TargetConnection::~TargetConnection()
+{
+    m_stats.channelClosed(*m_tunnelStats);
+}
+
 // ---- target socket events ----
 
 void TargetConnection::onConnected()
 {
     NR_LOG(LOG_DEBUG, "[server] stream %u connected to target fd=%d", m_streamId, fd());
     m_state = State::Relaying;
+    m_stats.targetConnected();
+    m_targetCounted = true;
     if (m_streamId == 0)
         return;
 
@@ -89,6 +101,11 @@ void TargetConnection::onResume()
 
 void TargetConnection::onClose()
 {
+    if (m_targetCounted) {
+        m_targetCounted = false;
+        m_stats.targetClosed();
+    }
+
     if (m_streamId == 0)
         return;
 
