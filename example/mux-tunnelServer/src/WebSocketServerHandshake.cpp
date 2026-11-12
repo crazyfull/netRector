@@ -16,8 +16,7 @@ bool equalsIgnoreCase(std::string_view a, std::string_view b)
 
 } // namespace
 
-WebSocketServerHandshake::WebSocketServerHandshake(const ServerConfig& config)
-    : m_expectedKey(config.webSocketKey)
+WebSocketServerHandshake::WebSocketServerHandshake(const ServerConfig& config): m_expectedKey(config.webSocketKey)
 {
     m_acceptResponse = "HTTP/1.1 101 Switching Protocols\r\n"
                        "upgrade: websocket\r\n"
@@ -41,12 +40,15 @@ HandshakeResult WebSocketServerHandshake::evaluate(std::string_view received, si
     consumed = end + HeaderTerminator.size();
     const std::string_view request = received.substr(0, consumed);
 
-    if (request.substr(0, 4) != "GET ")
+    if (request.substr(0, 4) != "MUX ")
         return HandshakeResult::Rejected;
 
+
     std::string_view value;
-    if (!findHeaderValue(request, "Upgrade", value) || !equalsIgnoreCase(value, "websocket"))
+    /*
+    if (!findHeaderValue(request, "upgrade", value) || !equalsIgnoreCase(value, "websocket"))
         return HandshakeResult::Rejected;
+    */
 
     if (!m_expectedKey.empty()) {
         if (!findHeaderValue(request, "Sec-WebSocket-Key", value) || value != m_expectedKey)
