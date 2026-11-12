@@ -13,11 +13,11 @@ constexpr const char* ListenAddress = "0.0.0.0";
 constexpr uint16_t ListenPort = 1080;
 
 // Where the tunnels connect to: the CDN edge (or mux-tunnelServer itself when there is no CDN).
-constexpr const char* CdnAddress = "127.0.0.1";
-constexpr uint16_t CdnPort = 9191;
+constexpr const char* CdnAddress = "irc.x81.ir";
+constexpr uint16_t CdnPort = 8080;
 
 // Websocket-style handshake sent as the first bytes of every tunnel connection.
-constexpr const char* HandshakeHost = "sv1.mojz.ir";
+constexpr const char* HandshakeHost = "mojz.ir";    //bot.mojz.ir
 constexpr const char* HandshakePath = "/";
 constexpr const char* WebSocketKey = "dGhlIHNhbXBsZSBub25jzQ==";
 // Value of Sec-WebSocket-Accept the 101 response must contain (empty = do not check).
