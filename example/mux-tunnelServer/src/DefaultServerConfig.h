@@ -17,6 +17,15 @@ constexpr const char* WebSocketKey = "dGhlIHNhbXBsZSBub25jzQ==";
 // Value of the Sec-WebSocket-Accept header returned in the 101 response.
 constexpr const char* WebSocketAccept = "dGhlIHNhbXBsZSBub25jzQ=";
 
+// TLS (HTTPS) on the tunnel listener. The handshake request is read inside the TLS session.
+constexpr bool UseTls = false;
+// Certificate chain and private key (PEM). When both are empty a self-signed certificate is
+// generated at start-up (nothing is written to disk).
+constexpr const char* TlsCertFile = "";
+constexpr const char* TlsKeyFile = "";
+// Name of the generated self-signed certificate.
+constexpr const char* TlsCommonName = "mojz.ir";
+
 // Mux ping interval in seconds (0 = off). Also keeps idle CDN connections alive.
 constexpr uint32_t KeepAliveSeconds = 30;
 // Time a new connection has to complete the handshake before it is dropped.

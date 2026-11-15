@@ -21,6 +21,17 @@ CommandLineOutcome ClientCommandLine::parse(int argc, char** argv, ClientConfig&
             continue;
         }
 
+        if (option == "--tls") {
+            config.useTls = true;
+            continue;
+        }
+
+        if (option == "--tls-verify") {
+            config.useTls = true;
+            config.tlsVerifyPeer = true;
+            continue;
+        }
+
         // all remaining options take one value
         if (i + 1 >= argc) {
             std::fprintf(stderr, "missing value for %s\n", option.c_str());
@@ -47,6 +58,12 @@ CommandLineOutcome ClientCommandLine::parse(int argc, char** argv, ClientConfig&
             config.webSocketKey = value;
         } else if (option == "--ws-accept") {
             config.expectedWebSocketAccept = value;
+        } else if (option == "--sni") {
+            config.tlsServerName = value;
+        } else if (option == "--tls-ca") {
+            config.useTls = true;
+            config.tlsVerifyPeer = true;
+            config.tlsCaFile = value;
         } else if (option == "--header") {
             config.requestHeaders.emplace_back(value);
         } else if (option == "--tunnels" || option == "--keepalive" || option == "--handshake-timeout"
@@ -96,6 +113,11 @@ void ClientCommandLine::printUsage(const char* program)
         "  --path PATH               request path (default %s)\n"
         "  --ws-key KEY              Sec-WebSocket-Key (default %s)\n"
         "  --ws-accept VALUE         expected Sec-WebSocket-Accept, empty = do not check (default %s)\n"
+        "  --tls                     wrap the tunnels in TLS (HTTPS); no certificate needed, the server\n"
+        "                            certificate is not verified unless --tls-verify / --tls-ca is given\n"
+        "  --tls-verify              verify the server certificate (system CAs)\n"
+        "  --tls-ca FILE             verify against this CA bundle / certificate (implies --tls-verify)\n"
+        "  --sni NAME                TLS server name, default: the --host value\n"
         "  --header LINE             extra request header, e.g. \"Connection: Upgrade\" (repeatable)\n"
         "  --tunnels N               number of mux tunnels, %d-%d (default %d)\n"
         "  --keepalive SEC           mux ping interval, 0 = off (default %u)\n"
