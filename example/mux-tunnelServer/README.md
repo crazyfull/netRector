@@ -25,6 +25,20 @@ Requests that are not `GET` + `Upgrade: websocket` + the configured key get `404
 (the key is the only access control, so change it). A connection that does not finish the
 handshake within `--handshake-timeout` seconds is dropped.
 
+## TLS (HTTPS)
+
+`--tls` accepts TLS on the tunnel listener; the websocket-style handshake is read inside the TLS
+session.
+
+* `--tls-cert FILE --tls-key FILE`: certificate chain and private key (PEM).
+* If **both are omitted** a self-signed ECDSA P-256 certificate (10 years, CN and subjectAltName =
+  `--tls-name`, default `mojz.ir`) is generated in memory at every start; nothing is written to
+  disk. Clients then must not verify the certificate (the default of mux-tunnelClient).
+* Giving only one of the two files is an error; a missing or unreadable file is an error (no silent
+  fallback to a generated certificate).
+* TLS needs BoringSSL at build time (`-DBORINGSSL_DIR=...`, built by `scripts/build_boringssl.sh`).
+  Without it the program still builds, `--tls` is refused at start-up.
+
 ## Build (static)
 
 ```sh
@@ -37,7 +51,7 @@ cmake --build build-server -j
   variable `NETRECTOR_DIR` (default: the repository root, `../..`), e.g.
   `-DNETRECTOR_DIR=/path/to/netRector`.
 * `-DMUXTUNNEL_STATIC=OFF` links dynamically (needed for sanitizer builds).
-* TLS is off. Later: `-DNETRECTOR_ENABLE_TLS=ON -DBORINGSSL_DIR=...`.
+* TLS: `-DBORINGSSL_DIR=/path/to/boringssl` (enabled automatically when found).
 
 ## Configuration
 
@@ -50,6 +64,9 @@ overridden at run time:
 | `--ws-key KEY` | `dGhlIHNhbXBsZSBub25jzQ==` | required `Sec-WebSocket-Key` (empty = any) |
 | `--ws-accept VALUE` | `dGhlIHNhbXBsZSBub25jzQ=` | `Sec-WebSocket-Accept` of the 101 response |
 | `--response-header LINE` | - | extra 101 header, repeatable |
+| `--tls` | off | accept TLS on the listener |
+| `--tls-cert FILE`, `--tls-key FILE` | - | certificate and key; both omitted = self-signed generated at start-up |
+| `--tls-name NAME` | `mojz.ir` | common name of the generated certificate |
 | `--keepalive SEC` | 30 | mux ping interval, 0 = off |
 | `--handshake-timeout SEC` | 10 | time allowed for the handshake |
 | `--max-streams N` | 32768 | concurrent streams per tunnel |

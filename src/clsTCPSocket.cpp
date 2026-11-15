@@ -990,7 +990,12 @@ void TCPSocket::tlsHandshake()
 
     // handshake failed (certificate, protocol, ya ghat shodan ertebat)
     m_lastError = EPROTO;
-    ERR_clear_error();
+    {
+        const long verifyResult = SSL_get_verify_result(m_ssl);
+        const std::string reason = TLSContext::lastErrorString();     // also clears the error queue
+        NR_LOG(netrector::LOG_DEBUG, "TLS handshake failed fd=%d: %s (certificate check: %s)", fd(),
+               reason.empty() ? "no TLS error" : reason.c_str(), X509_verify_cert_error_string(verifyResult));
+    }
     if (m_isAccepted)
         finalizeClose();
     else
