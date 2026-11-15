@@ -7,6 +7,7 @@
 
 #include "clsLog.h"
 #include "clsServer.h"
+#include "clsTLSContext.h"
 
 #include <algorithm>
 #include <csignal>
@@ -39,6 +40,20 @@ int ClientApplication::run()
     // The tunnels are divided between the reactor threads; there is no point in a thread without one.
     const int threads = std::max(1, std::min(m_config.threads, m_config.tunnelCount));
 
+    // TLS context shared by all tunnels; declared before the server so that it outlives every socket.
+    std::unique_ptr<TLSContext> tlsContext;
+    if (m_config.useTls) {
+        std::string error;
+        tlsContext.reset(TLSContext::createClient(m_config.tlsVerifyPeer,
+                                                  m_config.tlsCaFile.empty() ? nullptr : m_config.tlsCaFile.c_str(), &error));
+        if (!tlsContext) {
+            NR_LOG(LOG_ERROR, "[client] TLS is not available: %s", error.c_str());
+            return 1;
+        }
+        NR_LOG(LOG_INFO, "[client] TLS enabled, server certificate %s",
+               m_config.tlsVerifyPeer ? "is verified" : "is NOT verified");
+    }
+
     // The pools are declared before the server so that they outlive it: during Server::stop()
     // the sockets are closed and call back into their pool.
     std::vector<std::unique_ptr<TunnelPool>> pools;
@@ -50,7 +65,7 @@ int ClientApplication::run()
         const size_t tunnelCount = static_cast<size_t>(m_config.tunnelCount / threads + (i < m_config.tunnelCount % threads ? 1 : 0));
         EpollReactor* reactor = server.getShard(i);
 
-        pools.push_back(std::make_unique<TunnelPool>(*reactor, m_config, m_handshake, tunnelCount));
+        pools.push_back(std::make_unique<TunnelPool>(*reactor, m_config, m_handshake, tunnelCount, tlsContext.get()));
         TunnelPool* pool = pools.back().get();
 
         reactor->setUserData(pool);

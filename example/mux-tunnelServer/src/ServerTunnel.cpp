@@ -107,7 +107,8 @@ void ServerTunnel::onAccepted()
     std::string peerAddress;
     uint16_t peerPort = 0;
     getPeerAddress(peerAddress, peerPort);
-    NR_LOG(LOG_INFO, "[server] tunnel established from %s:%u", peerAddress.c_str(), peerPort);
+    NR_LOG(LOG_INFO, "[server] tunnel established from %s:%u%s%s", peerAddress.c_str(), peerPort,
+           isTLS() ? " over " : "", isTLS() ? tlsVersion() : "");
 }
 
 void ServerTunnel::onClose()

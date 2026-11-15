@@ -22,6 +22,11 @@ struct ClientConfig {
     std::string expectedWebSocketAccept = DefaultClientConfig::ExpectedWebSocketAccept;
     std::vector<std::string> requestHeaders;    // extra "Name: value" lines of the upgrade request
 
+    bool useTls = DefaultClientConfig::UseTls;
+    bool tlsVerifyPeer = DefaultClientConfig::TlsVerifyPeer;
+    std::string tlsServerName = DefaultClientConfig::TlsServerName;     // empty = handshakeHost
+    std::string tlsCaFile = DefaultClientConfig::TlsCaFile;             // empty = system CAs
+
     int tunnelCount = DefaultClientConfig::TunnelCount;
     uint32_t keepAliveSeconds = DefaultClientConfig::KeepAliveSeconds;
     uint32_t handshakeTimeoutSeconds = DefaultClientConfig::HandshakeTimeoutSeconds;

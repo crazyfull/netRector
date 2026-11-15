@@ -22,6 +22,11 @@ CommandLineOutcome ServerCommandLine::parse(int argc, char** argv, ServerConfig&
             continue;
         }
 
+        if (option == "--tls") {
+            config.useTls = true;
+            continue;
+        }
+
         // all remaining options take one value
         if (i + 1 >= argc) {
             std::fprintf(stderr, "missing value for %s\n", option.c_str());
@@ -35,6 +40,14 @@ CommandLineOutcome ServerCommandLine::parse(int argc, char** argv, ServerConfig&
                 std::fprintf(stderr, "invalid --listen value: %s\n", value);
                 return CommandLineOutcome::Invalid;
             }
+        } else if (option == "--tls-cert") {
+            config.useTls = true;
+            config.tlsCertFile = value;
+        } else if (option == "--tls-key") {
+            config.useTls = true;
+            config.tlsKeyFile = value;
+        } else if (option == "--tls-name") {
+            config.tlsCommonName = value;
         } else if (option == "--ws-key") {
             config.webSocketKey = value;
         } else if (option == "--ws-accept") {
@@ -73,6 +86,10 @@ void ServerCommandLine::printUsage(const char* program)
         "\n"
         "options (defaults come from DefaultServerConfig.h):\n"
         "  --listen IP:PORT          tunnel listener (default %s:%u)\n"
+        "  --tls                     accept TLS (HTTPS) on the listener\n"
+        "  --tls-cert FILE           certificate chain (PEM); with --tls-key. If both are omitted a\n"
+        "  --tls-key FILE            self-signed certificate is generated at start-up\n"
+        "  --tls-name NAME           common name of the generated certificate (default %s)\n"
         "  --ws-key KEY              required Sec-WebSocket-Key, empty = accept any\n"
         "  --ws-accept VALUE         Sec-WebSocket-Accept sent in the 101 response\n"
         "  --response-header LINE    extra header of the 101 response, e.g. \"Connection: Upgrade\" (repeatable)\n"
@@ -84,6 +101,7 @@ void ServerCommandLine::printUsage(const char* program)
         "  -h, --help                this text\n",
         program,
         DefaultServerConfig::ListenAddress, DefaultServerConfig::ListenPort,
+        DefaultServerConfig::TlsCommonName,
         DefaultServerConfig::KeepAliveSeconds, DefaultServerConfig::HandshakeTimeoutSeconds,
         DefaultServerConfig::MaxStreamsPerTunnel, DefaultServerConfig::Threads);
 }

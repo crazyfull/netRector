@@ -23,6 +23,16 @@ constexpr const char* WebSocketKey = "dGhlIHNhbXBsZSBub25jzQ==";
 // Value of Sec-WebSocket-Accept the 101 response must contain (empty = do not check).
 constexpr const char* ExpectedWebSocketAccept = "dGhlIHNhbXBsZSBub25jzQ=";
 
+// TLS (HTTPS) for the tunnel connections. The handshake request is sent inside the TLS session.
+// The client needs no certificate or key. By default the server certificate is NOT verified, so
+// a self-signed or otherwise invalid certificate works; enable verification for a real certificate.
+constexpr bool UseTls = false;
+constexpr bool TlsVerifyPeer = false;
+// SNI (and the name checked when verifying). Empty = use HandshakeHost.
+constexpr const char* TlsServerName = "";
+// CA bundle used when verifying. Empty = system CAs.
+constexpr const char* TlsCaFile = "";
+
 // Number of mux tunnels (1 - 16). New SOCKS5 connections are spread over them round-robin.
 constexpr int MinTunnelCount = 1;
 constexpr int MaxTunnelCount = 16;
