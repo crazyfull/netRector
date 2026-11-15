@@ -11,6 +11,12 @@
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/bio.h>
+#include <openssl/ec_key.h>
+#include <openssl/nid.h>
+#include <openssl/rand.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #endif
 
 namespace netrector {
@@ -280,6 +286,91 @@ TLSContext *TLSContext::createServer(const char *certChainFile, const char *priv
     return self;
 }
 
+// Generates an ECDSA P-256 key and a self-signed certificate valid for 10 years (CN and
+// subjectAltName = commonName) and installs both into ctx. Returns false on any failure.
+static bool installSelfSignedCertificate(SSL_CTX* ctx, const char* commonName)
+{
+    bool ok = false;
+    EVP_PKEY* key = EVP_PKEY_new();
+    EC_KEY* ec = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+    X509* cert = X509_new();
+
+    if (key && ec && cert && EC_KEY_generate_key(ec) == 1) {
+        EVP_PKEY_assign_EC_KEY(key, ec);    // key owns ec from now on
+        ec = nullptr;
+
+        uint8_t serial[8];
+        RAND_bytes(serial, sizeof(serial));
+        uint64_t serialNumber = 0;
+        for (uint8_t byte : serial)
+            serialNumber = (serialNumber << 8) | byte;
+        serialNumber &= 0x7fffffffffffffffULL;      // positive
+
+        constexpr long OneDay = 24 * 60 * 60;
+        X509_NAME* name = X509_get_subject_name(cert);
+
+        ok = X509_set_version(cert, 2) == 1
+             && ASN1_INTEGER_set_uint64(X509_get_serialNumber(cert), serialNumber) == 1
+             && X509_gmtime_adj(X509_getm_notBefore(cert), -OneDay) != nullptr
+             && X509_gmtime_adj(X509_getm_notAfter(cert), 3650 * OneDay) != nullptr
+             && X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+                                           reinterpret_cast<const uint8_t*>(commonName), -1, -1, 0) == 1
+             && X509_set_issuer_name(cert, name) == 1
+             && X509_set_pubkey(cert, key) == 1;
+
+        if (ok) {
+            // subjectAltName: modern clients ignore the CN; failure here is not fatal
+            const std::string altName = std::string("DNS:") + commonName;
+            X509V3_CTX extensionContext;
+            X509V3_set_ctx_nodb(&extensionContext);
+            X509V3_set_ctx(&extensionContext, cert, cert, nullptr, nullptr, 0);
+            if (X509_EXTENSION* extension = X509V3_EXT_nconf_nid(nullptr, &extensionContext, NID_subject_alt_name, altName.c_str())) {
+                X509_add_ext(cert, extension, -1);
+                X509_EXTENSION_free(extension);
+            }
+        }
+
+        ok = ok && X509_sign(cert, key, EVP_sha256()) > 0
+             && SSL_CTX_use_certificate(ctx, cert) == 1
+             && SSL_CTX_use_PrivateKey(ctx, key) == 1;
+    }
+
+    if (ec)
+        EC_KEY_free(ec);
+    if (cert)
+        X509_free(cert);
+    if (key)
+        EVP_PKEY_free(key);
+    return ok;
+}
+
+TLSContext *TLSContext::createServerSelfSigned(const char *commonName, std::string *error)
+{
+    ERR_clear_error();
+    SSL_CTX* ctx = newBaseContext();
+    if (!ctx) {
+        if (error) *error = lastErrorString();
+        return nullptr;
+    }
+
+    const char* name = (commonName && *commonName) ? commonName : "localhost";
+    if (!installSelfSignedCertificate(ctx, name)) {
+        if (error) {
+            *error = lastErrorString();
+            if (error->empty()) *error = "can not generate a self-signed certificate";
+        }
+        SSL_CTX_free(ctx);
+        return nullptr;
+    }
+
+    static const uint8_t sessionIdContext[] = "netRector";
+    SSL_CTX_set_session_id_context(ctx, sessionIdContext, sizeof(sessionIdContext) - 1);
+
+    TLSContext* self = new TLSContext(ctx, true, false);
+    SSL_CTX_set_alpn_select_cb(ctx, alpnSelectCallback, self);
+    return self;
+}
+
 TLSContext *TLSContext::createClient(bool verifyPeer, const char *caFile, std::string *error)
 {
     ERR_clear_error();
@@ -349,6 +440,12 @@ bool TLSContext::enableAsyncPrivateKey(int) { return false; }
 bool TLSContext::submitKeyJob(std::shared_ptr<TLSKeyJob>) { return false; }
 
 TLSContext* TLSContext::createServer(const char*, const char*, std::string* error)
+{
+    if (error) *error = kNoTLS;
+    return nullptr;
+}
+
+TLSContext* TLSContext::createServerSelfSigned(const char*, std::string* error)
 {
     if (error) *error = kNoTLS;
     return nullptr;

@@ -89,7 +89,8 @@ void ClientTunnel::completeHandshake(size_t consumed)
 
 void ClientTunnel::onConnected()
 {
-    NR_LOG(LOG_INFO, "[client] tunnel established with %s:%u", m_config.cdnAddress.c_str(), m_config.cdnPort);
+    NR_LOG(LOG_INFO, "[client] tunnel established with %s:%u%s%s", m_config.cdnAddress.c_str(), m_config.cdnPort,
+           isTLS() ? " over " : "", isTLS() ? tlsVersion() : "");
     m_pool.onTunnelReady(*this);
 }
 

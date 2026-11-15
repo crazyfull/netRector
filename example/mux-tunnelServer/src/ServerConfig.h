@@ -17,6 +17,11 @@ struct ServerConfig {
     std::string webSocketAccept = DefaultServerConfig::WebSocketAccept;
     std::vector<std::string> responseHeaders;   // extra "Name: value" lines of the 101 response
 
+    bool useTls = DefaultServerConfig::UseTls;
+    std::string tlsCertFile = DefaultServerConfig::TlsCertFile;
+    std::string tlsKeyFile = DefaultServerConfig::TlsKeyFile;
+    std::string tlsCommonName = DefaultServerConfig::TlsCommonName;
+
     uint32_t keepAliveSeconds = DefaultServerConfig::KeepAliveSeconds;
     uint32_t handshakeTimeoutSeconds = DefaultServerConfig::HandshakeTimeoutSeconds;
     size_t maxStreamsPerTunnel = DefaultServerConfig::MaxStreamsPerTunnel;

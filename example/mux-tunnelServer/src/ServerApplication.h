@@ -6,6 +6,7 @@
 #include "WebSocketServerHandshake.h"
 
 #include "clsTCPSocket.h"
+#include "clsTLSContext.h"
 
 #include <csignal>
 #include <string>
@@ -26,9 +27,12 @@ private:
     void handleCommand(const std::string& command);
     void printStats();
 
+    netrector::TLSContext* createTlsContext();
+
     ServerConfig m_config;
     WebSocketServerHandshake m_handshake;
     ServerStats m_stats;
+    netrector::TLSContext* m_tlsContext = nullptr;      // nullptr = plain TCP
 };
 
 #endif // SERVERAPPLICATION_H

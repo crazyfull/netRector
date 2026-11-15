@@ -15,9 +15,10 @@ endif()
 set(NETRECTOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "netRector source directory")
 option(MUXTUNNEL_STATIC "Link the executable fully static" ON)
 
-# TLS (BoringSSL) is optional and off by default. To enable it later:
-#   -DNETRECTOR_ENABLE_TLS=ON -DBORINGSSL_DIR=/path/to/boringssl
-set(NETRECTOR_ENABLE_TLS OFF CACHE BOOL "Enable TLS support in netRector")
+# TLS (BoringSSL) is used when it is found: -DBORINGSSL_DIR=/path/to/boringssl (or the env variable
+# BORINGSSL_DIR; scripts/build_boringssl.sh builds it). Without BoringSSL the program still builds
+# and works, only --tls is refused. -DNETRECTOR_ENABLE_TLS=OFF skips the search.
+set(NETRECTOR_ENABLE_TLS ON CACHE BOOL "Enable TLS support in netRector when BoringSSL is found")
 set(NETRECTOR_BUILD_EXAMPLE OFF CACHE BOOL "Build the netRector example application" FORCE)
 
 if(NOT EXISTS "${NETRECTOR_DIR}/CMakeLists.txt")
