@@ -6,10 +6,12 @@
 
 #include "clsLog.h"
 #include "clsServer.h"
+#include "clsTLSContext.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <csignal>
+#include <memory>
 #include <poll.h>
 #include <string>
 #include <sys/signalfd.h>
@@ -27,7 +29,34 @@ ServerApplication::ServerApplication(const ServerConfig& config)
 TCPSocket* ServerApplication::createTunnel(void* context)
 {
     ServerApplication* application = static_cast<ServerApplication*>(context);
-    return new ServerTunnel(application->m_config, application->m_handshake, application->m_stats);
+    ServerTunnel* tunnel = new ServerTunnel(application->m_config, application->m_handshake, application->m_stats);
+    if (application->m_tlsContext)
+        tunnel->enableTLS(application->m_tlsContext);   // onAccepted() is called after the TLS handshake
+    return tunnel;
+}
+
+TLSContext* ServerApplication::createTlsContext()
+{
+    const bool hasCert = !m_config.tlsCertFile.empty();
+    const bool hasKey = !m_config.tlsKeyFile.empty();
+    if (hasCert != hasKey) {
+        NR_LOG(LOG_ERROR, "[server] --tls-cert and --tls-key must be given together");
+        return nullptr;
+    }
+
+    std::string error;
+    TLSContext* context = nullptr;
+    if (hasCert) {
+        context = TLSContext::createServer(m_config.tlsCertFile.c_str(), m_config.tlsKeyFile.c_str(), &error);
+    } else {
+        context = TLSContext::createServerSelfSigned(m_config.tlsCommonName.c_str(), &error);
+        if (context)
+            NR_LOG(LOG_WARN, "[server] no certificate given: generated a self-signed one (CN=%s)", m_config.tlsCommonName.c_str());
+    }
+
+    if (!context)
+        NR_LOG(LOG_ERROR, "[server] TLS is not available: %s", error.c_str());
+    return context;
 }
 
 int ServerApplication::run()
@@ -41,6 +70,15 @@ int ServerApplication::run()
     const int threads = m_config.threads > 0
         ? m_config.threads
         : static_cast<int>(std::max(1u, std::thread::hardware_concurrency()));
+
+    // Declared before the server so that it outlives every socket.
+    std::unique_ptr<TLSContext> tlsContext;
+    if (m_config.useTls) {
+        tlsContext.reset(createTlsContext());
+        if (!tlsContext)
+            return 1;
+        m_tlsContext = tlsContext.get();
+    }
 
     Server server(maxConnections, threads);
     server.setUseGarbageCollector(false);
