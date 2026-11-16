@@ -34,6 +34,7 @@ struct ClientConfig {
     size_t maxStreamsPerTunnel = DefaultClientConfig::MaxStreamsPerTunnel;
     int threads = DefaultClientConfig::Threads;
     bool verbose = false;
+    bool sniTLSBypass = false;
 };
 
 #endif // CLIENTCONFIG_H
