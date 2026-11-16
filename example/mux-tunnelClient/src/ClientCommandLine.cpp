@@ -26,6 +26,11 @@ CommandLineOutcome ClientCommandLine::parse(int argc, char** argv, ClientConfig&
             continue;
         }
 
+        if (option == "--bypass") {
+            config.sniTLSBypass = true;
+            continue;
+        }
+
         if (option == "--tls-verify") {
             config.useTls = true;
             config.tlsVerifyPeer = true;

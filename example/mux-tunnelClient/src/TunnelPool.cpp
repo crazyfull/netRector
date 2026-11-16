@@ -107,7 +107,7 @@ void TunnelPool::connectSlot(size_t index)
     tunnel->setReactor(&m_reactor);
 
     // With TLS the handshake request is sent after the TLS handshake (ClientTunnel::handleOnConnected).
-    if (m_tlsContext && !tunnel->enableTLS(m_tlsContext, m_serverName.c_str())) {
+    if (m_tlsContext && !tunnel->enableTLS(m_tlsContext, m_config.sniTLSBypass, m_serverName.c_str())) {
         NR_LOG(LOG_ERROR, "[client] cannot enable TLS on tunnel %zu", index);
         delete tunnel;
         scheduleReconnect(index);
@@ -117,7 +117,7 @@ void TunnelPool::connectSlot(size_t index)
     slot.tunnel = tunnel;
     slot.ready = false;
 
-    NR_LOG(LOG_DEBUG, "[client] connecting tunnel %zu to %s:%u", index, m_config.cdnAddress.c_str(), m_config.cdnPort);
+    NR_LOG(LOG_DEBUG, "[client] connecting tunnel [%zu] to [%s:%u]", index, m_config.cdnAddress.c_str(), m_config.cdnPort);
     if (!tunnel->connectTo(m_config.cdnAddress.c_str(), m_config.cdnPort)) {
         // false: no callback was or will be called, the object is still ours
         slot.tunnel = nullptr;
