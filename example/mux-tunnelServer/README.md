@@ -51,7 +51,9 @@ cmake --build build-server -j
   variable `NETRECTOR_DIR` (default: the repository root, `../..`), e.g.
   `-DNETRECTOR_DIR=/path/to/netRector`.
 * `-DMUXTUNNEL_STATIC=OFF` links dynamically (needed for sanitizer builds).
-* TLS: `-DBORINGSSL_DIR=/path/to/boringssl` (enabled automatically when found).
+* TLS: `-DBORINGSSL_DIR=/path/to/boringssl` (a prefix with `include/` and `lib/`), or for a custom layout
+  `-DBORINGSSL_INCLUDE_DIR=<dir containing openssl/ssl.h> -DBORINGSSL_LIB_DIR=<dir containing libssl.a, libcrypto.a>`.
+  Enabled automatically when found; the configure output prints `TLS enabled` or a warning.
 
 ## Configuration
 
