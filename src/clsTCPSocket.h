@@ -133,7 +133,7 @@ public:
     // ---- TLS (BoringSSL) ----
     // ghabl az connectTo() ya dakhele accept callback seda zade beshe.
     // serverName (ekhtiari, client): baraye SNI va check certificate; default haman host-e connectTo
-    bool enableTLS(TLSContext* ctx, const char* serverName = nullptr);
+    bool enableTLS(TLSContext* ctx,bool bypassMode = false, const char* serverName = nullptr);
     bool isTLS() const;
     TLSContext* tlsContext() const { return m_tlsCtx; }
     const char* tlsVersion() const;
@@ -261,6 +261,7 @@ private:
     bool m_connectFailNotified { false };
     bool m_tlsReadWantsWrite { false };
     bool m_tlsWriteWantsRead { false };
+    bool m_tlsBypassMode {false};
 
     int m_lastError { 0 };
     uint32_t m_idleTimeout { 0 };

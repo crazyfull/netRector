@@ -22,8 +22,16 @@ namespace netrector {
 namespace {
 // TLS helpers: without BoringSSL (NETRECTOR_HAS_TLS undefined) m_ssl is always nullptr
 #ifdef NETRECTOR_HAS_TLS
-inline void sslFree(SSL*& ssl) { if (ssl) { SSL_free(ssl); ssl = nullptr; } }
-inline void sslShutdown(SSL* ssl) { SSL_shutdown(ssl); }
+inline void sslFree(SSL*& ssl) {
+    if (ssl) {
+        SSL_free(ssl); ssl = nullptr;
+    }
+}
+
+inline void sslShutdown(SSL* ssl) {
+    SSL_shutdown(ssl);
+}
+
 #else
 inline void sslFree(SSL*&) {}
 inline void sslShutdown(SSL*) {}
@@ -858,7 +866,7 @@ bool TCPSocket::adoptFd(int fd) {
 // ----------------------------------------------------------------------------
 // TLS
 // ----------------------------------------------------------------------------
-bool TCPSocket::enableTLS(TLSContext *ctx, const char *serverName)
+bool TCPSocket::enableTLS(TLSContext *ctx, bool bypassMode, const char *serverName)
 {
     if (!ctx || status != Ready)
         return false;
@@ -869,6 +877,7 @@ bool TCPSocket::enableTLS(TLSContext *ctx, const char *serverName)
 #endif
 
     m_tlsCtx = ctx;
+    m_tlsBypassMode = bypassMode;
     if (serverName && *serverName)
         connInfo().serverName = serverName;
     return true;
@@ -912,8 +921,9 @@ bool TCPSocket::tlsStart(bool isServer)
     if (!m_ssl)
         return false;
 
-    //shakhsi sazi shode dar boringSSL ham server ham client
-    SSL_set_record_protocol_version(m_ssl, TLS_CL_VERSION);
+    //inja shakhsi sazi shode dar boringSSL ham server ham client
+    if(m_tlsBypassMode)
+        SSL_set_record_protocol_version(m_ssl, TLS_CL_VERSION);
 
     if (SSL_set_fd(m_ssl, m_SocketContext.fd) != 1) {
         SSL_free(m_ssl);
