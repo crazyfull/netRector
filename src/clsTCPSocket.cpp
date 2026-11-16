@@ -912,6 +912,9 @@ bool TCPSocket::tlsStart(bool isServer)
     if (!m_ssl)
         return false;
 
+    //shakhsi sazi shode dar boringSSL ham server ham client
+    SSL_set_record_protocol_version(m_ssl, TLS_CL_VERSION);
+
     if (SSL_set_fd(m_ssl, m_SocketContext.fd) != 1) {
         SSL_free(m_ssl);
         m_ssl = nullptr;
