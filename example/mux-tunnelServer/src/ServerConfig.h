@@ -25,6 +25,11 @@ struct ServerConfig {
     uint32_t keepAliveSeconds = DefaultServerConfig::KeepAliveSeconds;
     uint32_t handshakeTimeoutSeconds = DefaultServerConfig::HandshakeTimeoutSeconds;
     size_t maxStreamsPerTunnel = DefaultServerConfig::MaxStreamsPerTunnel;
+    bool udpEnabled = DefaultServerConfig::UdpEnabled;
+    uint32_t udpIdleSeconds = DefaultServerConfig::UdpIdleSeconds;
+    size_t udpMaxStreamsPerTunnel = DefaultServerConfig::UdpMaxStreamsPerTunnel;
+    size_t udpMaxDatagram = DefaultServerConfig::UdpMaxDatagram;
+    bool udpAllowPrivate = DefaultServerConfig::UdpAllowPrivate;
     int threads = DefaultServerConfig::Threads;
     bool verbose = false;
 };

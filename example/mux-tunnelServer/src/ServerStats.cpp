@@ -61,12 +61,25 @@ std::string ServerStats::report() const
         static_cast<unsigned long long>(m_totalTargets.load()));
     text += line;
 
+    std::snprintf(line, sizeof(line),
+        "udp streams:        %llu active   (%llu total)\n"
+        "udp datagrams:      %llu up (%llu bytes), %llu down (%llu bytes), %llu dropped\n",
+        static_cast<unsigned long long>(m_activeUdpStreams.load()),
+        static_cast<unsigned long long>(m_totalUdpStreams.load()),
+        static_cast<unsigned long long>(m_udpDatagramsUp.load()),
+        static_cast<unsigned long long>(m_udpBytesUp.load()),
+        static_cast<unsigned long long>(m_udpDatagramsDown.load()),
+        static_cast<unsigned long long>(m_udpBytesDown.load()),
+        static_cast<unsigned long long>(m_udpDropped.load()));
+    text += line;
+
     const auto now = std::chrono::steady_clock::now();
     for (const auto& tunnel : tunnels) {
         const long long seconds = std::chrono::duration_cast<std::chrono::seconds>(now - tunnel->establishedAt).count();
-        std::snprintf(line, sizeof(line), "  tunnel #%-4llu %-22s up %llds  channels %u active / %llu total\n",
+        std::snprintf(line, sizeof(line), "  tunnel #%-4llu %-22s up %llds  channels %u active / %llu total, udp %u active\n",
             static_cast<unsigned long long>(tunnel->id), tunnel->peer.c_str(), seconds,
-            tunnel->activeStreams.load(), static_cast<unsigned long long>(tunnel->totalStreams.load()));
+            tunnel->activeStreams.load(), static_cast<unsigned long long>(tunnel->totalStreams.load()),
+            tunnel->activeUdpStreams.load());
         text += line;
     }
 

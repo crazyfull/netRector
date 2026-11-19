@@ -127,5 +127,5 @@ void ServerTunnel::handleNewStream(void* argument, uint32_t streamId, Stream* st
 
     // The object registers itself as the stream's callback target and is owned by the reactor
     // once it is connected or closed.
-    new TargetConnection(tunnel, streamId, stream, tunnel->m_stats, tunnel->m_tunnelStats);
+    new TargetConnection(tunnel, streamId, stream, tunnel->m_config, tunnel->m_stats, tunnel->m_tunnelStats);
 }

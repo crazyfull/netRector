@@ -6,6 +6,7 @@ namespace {
 
 constexpr uint8_t SocksVersion = 0x05;
 constexpr uint8_t CommandConnect = 0x01;
+constexpr uint8_t CommandForwardUdp = 0x05;
 constexpr uint8_t AddressTypeIPv4 = 0x01;
 constexpr uint8_t AddressTypeDomain = 0x03;
 constexpr uint8_t AddressTypeIPv6 = 0x04;
@@ -50,7 +51,11 @@ Socks5ParseResult Socks5RequestParser::parse(const uint8_t* data, size_t length,
 
     request.length = total;
 
-    if (data[1] != CommandConnect) {
+    if (data[1] == CommandConnect) {
+        request.command = Socks5Command::Connect;
+    } else if (data[1] == CommandForwardUdp) {
+        request.command = Socks5Command::ForwardUdp;
+    } else {
         request.error = Socks5ReplyCode::CommandNotSupported;
         return Socks5ParseResult::Invalid;
     }

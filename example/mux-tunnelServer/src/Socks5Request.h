@@ -7,8 +7,14 @@
 #include <cstdint>
 #include <string>
 
-// A parsed SOCKS5 CONNECT request.
+enum class Socks5Command : uint8_t {
+    Connect = 0x01,     // TCP
+    ForwardUdp = 0x05   // UDP-in-TCP of hev-socks5-tunnel (datagram frames over the stream)
+};
+
+// A parsed SOCKS5 request (CONNECT or FWD UDP).
 struct Socks5Request {
+    Socks5Command command = Socks5Command::Connect;
     std::string host;                                           // domain name or textual IP address
     uint16_t port = 0;
     size_t length = 0;                                          // bytes consumed from the input

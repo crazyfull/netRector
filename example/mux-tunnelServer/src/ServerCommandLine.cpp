@@ -22,6 +22,21 @@ CommandLineOutcome ServerCommandLine::parse(int argc, char** argv, ServerConfig&
             continue;
         }
 
+        if (option == "--no-udp") {
+            config.udpEnabled = false;
+            continue;
+        }
+
+        if (option == "--udp") {
+            config.udpEnabled = true;
+            continue;
+        }
+
+        if (option == "--udp-allow-private") {
+            config.udpAllowPrivate = true;
+            continue;
+        }
+
         if (option == "--tls") {
             config.useTls = true;
             continue;
@@ -54,7 +69,8 @@ CommandLineOutcome ServerCommandLine::parse(int argc, char** argv, ServerConfig&
             config.webSocketAccept = value;
         } else if (option == "--response-header") {
             config.responseHeaders.emplace_back(value);
-        } else if (option == "--keepalive" || option == "--handshake-timeout" || option == "--max-streams" || option == "--threads") {
+        } else if (option == "--keepalive" || option == "--handshake-timeout" || option == "--max-streams" || option == "--threads"
+                   || option == "--udp-idle" || option == "--udp-max-streams" || option == "--udp-max-datagram") {
             if (!parseUnsigned(value, number)) {
                 std::fprintf(stderr, "invalid value for %s: %s\n", option.c_str(), value);
                 return CommandLineOutcome::Invalid;
@@ -63,7 +79,17 @@ CommandLineOutcome ServerCommandLine::parse(int argc, char** argv, ServerConfig&
                 config.keepAliveSeconds = static_cast<uint32_t>(number);
             else if (option == "--handshake-timeout")
                 config.handshakeTimeoutSeconds = static_cast<uint32_t>(number);
-            else if (option == "--max-streams")
+            else if (option == "--udp-idle")
+                config.udpIdleSeconds = static_cast<uint32_t>(number);
+            else if (option == "--udp-max-streams")
+                config.udpMaxStreamsPerTunnel = static_cast<size_t>(number);
+            else if (option == "--udp-max-datagram") {
+                if (number < 512 || number > 65000) {
+                    std::fprintf(stderr, "--udp-max-datagram must be between 512 and 65000\n");
+                    return CommandLineOutcome::Invalid;
+                }
+                config.udpMaxDatagram = static_cast<size_t>(number);
+            } else if (option == "--max-streams")
                 config.maxStreamsPerTunnel = static_cast<size_t>(number);
             else
                 config.threads = static_cast<int>(number);
@@ -96,6 +122,11 @@ void ServerCommandLine::printUsage(const char* program)
         "  --keepalive SEC           mux ping interval, 0 = off (default %u)\n"
         "  --handshake-timeout SEC   time allowed for the handshake (default %u)\n"
         "  --max-streams N           concurrent streams per tunnel (default %zu)\n"
+        "  --no-udp                  refuse UDP-over-TCP streams (default: accepted)\n"
+        "  --udp-idle SEC            close a UDP stream after SEC without datagrams, 0 = never (default %u)\n"
+        "  --udp-max-streams N       concurrent UDP streams per tunnel (default %zu)\n"
+        "  --udp-max-datagram BYTES  largest relayed datagram (default %zu)\n"
+        "  --udp-allow-private       allow UDP to loopback/private/link-local/multicast addresses\n"
         "  --threads N               reactor threads, 0 = one per CPU core (default %d)\n"
         "  -v, --verbose             debug logging\n"
         "  -h, --help                this text\n",
@@ -103,5 +134,7 @@ void ServerCommandLine::printUsage(const char* program)
         DefaultServerConfig::ListenAddress, DefaultServerConfig::ListenPort,
         DefaultServerConfig::TlsCommonName,
         DefaultServerConfig::KeepAliveSeconds, DefaultServerConfig::HandshakeTimeoutSeconds,
-        DefaultServerConfig::MaxStreamsPerTunnel, DefaultServerConfig::Threads);
+        DefaultServerConfig::MaxStreamsPerTunnel,
+        DefaultServerConfig::UdpIdleSeconds, DefaultServerConfig::UdpMaxStreamsPerTunnel, DefaultServerConfig::UdpMaxDatagram,
+        DefaultServerConfig::Threads);
 }
