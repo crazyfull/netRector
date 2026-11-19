@@ -1,5 +1,6 @@
 #include "UdpRelay.h"
 
+#include "DestinationPolicy.h"
 #include "Socks5Reply.h"
 
 #include "clsLog.h"
@@ -23,19 +24,6 @@ constexpr size_t MaxQueuedDownstreamBytes = 256 * 1024;
 // Idle check period (seconds); the idle limit is accurate to about this value.
 constexpr int IdleCheckMs = 5000;
 
-bool isPrivateIPv4(uint32_t host)    // host byte order
-{
-    const uint8_t a = static_cast<uint8_t>(host >> 24);
-    const uint8_t b = static_cast<uint8_t>(host >> 16);
-    return a == 0 || a == 10 || a == 127
-        || (a == 100 && (b & 0xC0) == 64)               // 100.64.0.0/10 carrier-grade NAT
-        || (a == 169 && b == 254)                       // link-local, cloud metadata
-        || (a == 172 && (b & 0xF0) == 16)
-        || (a == 192 && b == 168)
-        || (a == 192 && b == 0 && static_cast<uint8_t>(host >> 8) == 0)   // 192.0.0.0/24
-        || a >= 224;                                    // multicast, reserved, broadcast
-}
-
 } // namespace
 
 UdpRelay::UdpRelay(MultiplexedTunnel* tunnel, uint32_t streamId, const ServerConfig& config,
@@ -53,37 +41,6 @@ UdpRelay::UdpRelay(MultiplexedTunnel* tunnel, uint32_t streamId, const ServerCon
 UdpRelay::~UdpRelay()
 {
     m_stats.udpStreamClosed(*m_tunnelStats);
-}
-
-bool UdpRelay::isAllowedDestination(const sockaddr* address, bool allowPrivate)
-{
-    if (address->sa_family == AF_INET) {
-        const sockaddr_in* in = reinterpret_cast<const sockaddr_in*>(address);
-        if (in->sin_port == 0)
-            return false;
-        return allowPrivate || !isPrivateIPv4(ntohl(in->sin_addr.s_addr));
-    }
-
-    if (address->sa_family == AF_INET6) {
-        const sockaddr_in6* in6 = reinterpret_cast<const sockaddr_in6*>(address);
-        if (in6->sin6_port == 0)
-            return false;
-        if (allowPrivate)
-            return true;
-
-        const uint8_t* a = in6->sin6_addr.s6_addr;
-        if (IN6_IS_ADDR_V4MAPPED(&in6->sin6_addr)) {
-            uint32_t v4;
-            std::memcpy(&v4, a + 12, 4);
-            return !isPrivateIPv4(ntohl(v4));
-        }
-        return !(IN6_IS_ADDR_UNSPECIFIED(&in6->sin6_addr) || IN6_IS_ADDR_LOOPBACK(&in6->sin6_addr)
-                 || (a[0] & 0xFE) == 0xFC            // fc00::/7 unique local
-                 || (a[0] == 0xFE && (a[1] & 0xC0) == 0x80)   // fe80::/10 link-local
-                 || a[0] == 0xFF);                   // multicast
-    }
-
-    return false;
 }
 
 void UdpRelay::start(const std::string& pending)
@@ -199,7 +156,7 @@ void UdpRelay::handleFrame(const uint8_t* address, size_t addressLength, const u
     }
     (void)addressLength;
 
-    if (!isAllowedDestination(reinterpret_cast<sockaddr*>(&destination), m_config.udpAllowPrivate)) {
+    if (!DestinationPolicy::isAllowed(reinterpret_cast<sockaddr*>(&destination), m_config.allowPrivate)) {
         m_stats.udpDropped();
         return;
     }

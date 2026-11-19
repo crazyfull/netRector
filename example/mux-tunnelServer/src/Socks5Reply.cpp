@@ -14,6 +14,8 @@ void Socks5Reply::build(Socks5ReplyCode code, uint8_t (&reply)[Size])
 Socks5ReplyCode Socks5Reply::codeFromError(int error)
 {
     switch (error) {
+    case EACCES:
+        return Socks5ReplyCode::NotAllowed;
     case ECONNREFUSED:
         return Socks5ReplyCode::ConnectionRefused;
     case ENETUNREACH:

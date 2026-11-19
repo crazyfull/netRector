@@ -3,6 +3,7 @@
 #include "Socks5Reply.h"
 #include "Socks5Request.h"
 #include "Socks5RequestParser.h"
+#include "DestinationPolicy.h"
 #include "UdpRelay.h"
 
 #include "clsLog.h"
@@ -153,6 +154,9 @@ void TargetConnection::handleRequest()
     m_tunnel->pauseStream(m_streamId);
 
     NR_LOG(LOG_DEBUG, "[server] stream %u: connecting to %s:%u", m_streamId, request.host.c_str(), request.port);
+    // every resolved address is checked right before connecting (also protects against DNS answers
+    // that point to internal addresses)
+    setConnectFilter(&DestinationPolicy::connectFilter, const_cast<bool*>(&m_config.allowPrivate));
     if (!connectTo(request.host.c_str(), request.port))
         failWith(Socks5ReplyCode::GeneralFailure);
     // true: the result arrives through onConnected() / onConnectFailed()

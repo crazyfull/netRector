@@ -29,7 +29,7 @@ struct ServerConfig {
     uint32_t udpIdleSeconds = DefaultServerConfig::UdpIdleSeconds;
     size_t udpMaxStreamsPerTunnel = DefaultServerConfig::UdpMaxStreamsPerTunnel;
     size_t udpMaxDatagram = DefaultServerConfig::UdpMaxDatagram;
-    bool udpAllowPrivate = DefaultServerConfig::UdpAllowPrivate;
+    bool allowPrivate = DefaultServerConfig::AllowPrivate;
     int threads = DefaultServerConfig::Threads;
     bool verbose = false;
 };

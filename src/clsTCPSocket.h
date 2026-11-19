@@ -130,6 +130,12 @@ public:
     // false: hich callback seda zade nashode va object hanooz male caller hast.
     bool connectTo(const char *host, uint16_t port);
 
+    // Optional filter for outgoing connects: called with every concrete address connectTo() is
+    // about to connect to (literal address or each DNS result). false = do not connect to it; the
+    // next DNS address is tried, and if none is left the connect fails with EACCES.
+    typedef bool (*ConnectFilterFn)(void* argument, const struct sockaddr* address, socklen_t addressLength);
+    void setConnectFilter(ConnectFilterFn filter, void* argument) { m_connectFilter = filter; m_connectFilterArg = argument; }
+
     // ---- TLS (BoringSSL) ----
     // ghabl az connectTo() ya dakhele accept callback seda zade beshe.
     // serverName (ekhtiari, client): baraye SNI va check certificate; default haman host-e connectTo
@@ -259,6 +265,8 @@ private:
     bool m_dnsPending { false };
     bool m_dnsTriedV6 { false };
     bool m_connectFailNotified { false };
+    ConnectFilterFn m_connectFilter { nullptr };
+    void* m_connectFilterArg { nullptr };
     bool m_tlsReadWantsWrite { false };
     bool m_tlsWriteWantsRead { false };
     bool m_tlsBypassMode {false};
