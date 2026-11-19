@@ -129,6 +129,14 @@ if(NETRECTOR_ENABLE_TLS)
     )
 
     if(BORINGSSL_SSL AND BORINGSSL_CRYPTO AND EXISTS "${BORINGSSL_INCLUDE_DIR}/openssl/ssl.h")
+        # netRector needs SSL_set_record_protocol_version / TLS_CL_VERSION (scripts/patch_boringssl.sh),
+        # applied to the BoringSSL sources BEFORE they are built.
+        file(READ "${BORINGSSL_INCLUDE_DIR}/openssl/ssl.h" _bssl_ssl_h)
+        if(NOT _bssl_ssl_h MATCHES "SSL_set_record_protocol_version" OR NOT _bssl_ssl_h MATCHES "TLS_CL_VERSION")
+            message(FATAL_ERROR "This BoringSSL (${BORINGSSL_INCLUDE_DIR}) lacks SSL_set_record_protocol_version / "
+                                "TLS_CL_VERSION. Apply scripts/patch_boringssl.sh <boringssl-src> to the sources and "
+                                "rebuild BoringSSL (scripts/build_boringssl.sh does both), or use -DNETRECTOR_ENABLE_TLS=OFF.")
+        endif()
         set(NETRECTOR_HAS_TLS ON)
     else()
         message(WARNING "BoringSSL not found (include='${BORINGSSL_INCLUDE_DIR}', ssl='${BORINGSSL_SSL}', "
