@@ -1,12 +1,14 @@
 #ifndef TARGETCONNECTION_H
 #define TARGETCONNECTION_H
 
+#include "ServerStats.h"
 #include "Socks5ReplyCode.h"
 
 #include "clsMultiplexedTunnel.h"
 #include "clsTCPSocket.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 // The outbound side of one tunnel stream.
@@ -18,7 +20,9 @@
 // detach) before the object goes away.
 class TargetConnection : public netrector::TCPSocket {
 public:
-    TargetConnection(netrector::MultiplexedTunnel* tunnel, uint32_t streamId, netrector::MultiplexedTunnel::Stream* stream);
+    TargetConnection(netrector::MultiplexedTunnel* tunnel, uint32_t streamId, netrector::MultiplexedTunnel::Stream* stream,
+                     ServerStats& stats, std::shared_ptr<TunnelStats> tunnelStats);
+    ~TargetConnection() override;
 
     void onConnected() override;
     void onConnectFailed() override;
@@ -52,6 +56,9 @@ private:
     std::string m_buffer;               // partial request, then data received before the target is connected
     bool m_streamFinReceived = false;   // the client finished sending
     bool m_finSentToStream = false;     // the target finished sending
+    ServerStats& m_stats;
+    std::shared_ptr<TunnelStats> m_tunnelStats;     // kept alive: this object can outlive its tunnel
+    bool m_targetCounted = false;       // targetConnected() was reported
 };
 
 #endif // TARGETCONNECTION_H
