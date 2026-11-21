@@ -9,10 +9,13 @@
 using namespace netrector;
 
 TunnelPool::TunnelPool(EpollReactor& reactor, const ClientConfig& config,
-                       const WebSocketClientHandshake& handshake, size_t tunnelCount)
+                       const WebSocketClientHandshake& handshake, size_t tunnelCount,
+                       TLSContext* tlsContext)
     : m_reactor(reactor)
     , m_config(config)
     , m_handshake(handshake)
+    , m_tlsContext(tlsContext)
+    , m_serverName(config.tlsServerName.empty() ? config.handshakeHost : config.tlsServerName)
     , m_slots(tunnelCount)
 {
     for (TunnelSlot& slot : m_slots)
@@ -102,7 +105,14 @@ void TunnelPool::connectSlot(size_t index)
 
     ClientTunnel* tunnel = new ClientTunnel(*this, m_config, m_handshake);
     tunnel->setReactor(&m_reactor);
-    // To use TLS later: tunnel->enableTLS(context, serverName) goes here, before connectTo().
+
+    // With TLS the handshake request is sent after the TLS handshake (ClientTunnel::handleOnConnected).
+    if (m_tlsContext && !tunnel->enableTLS(m_tlsContext, m_serverName.c_str())) {
+        NR_LOG(LOG_ERROR, "[client] cannot enable TLS on tunnel %zu", index);
+        delete tunnel;
+        scheduleReconnect(index);
+        return;
+    }
 
     slot.tunnel = tunnel;
     slot.ready = false;
