@@ -32,8 +32,8 @@ CommandLineOutcome ServerCommandLine::parse(int argc, char** argv, ServerConfig&
             continue;
         }
 
-        if (option == "--udp-allow-private") {
-            config.udpAllowPrivate = true;
+        if (option == "--allow-private" || option == "--udp-allow-private") {      // the second is the old name
+            config.allowPrivate = true;
             continue;
         }
 
@@ -122,11 +122,13 @@ void ServerCommandLine::printUsage(const char* program)
         "  --keepalive SEC           mux ping interval, 0 = off (default %u)\n"
         "  --handshake-timeout SEC   time allowed for the handshake (default %u)\n"
         "  --max-streams N           concurrent streams per tunnel (default %zu)\n"
+        "  --allow-private           allow TCP and UDP to loopback/private/link-local/multicast addresses\n"
+                                  "                            (default: refused, except the local DNS 127.0.0.1:53 / [::1]:53)\n"
         "  --no-udp                  refuse UDP-over-TCP streams (default: accepted)\n"
         "  --udp-idle SEC            close a UDP stream after SEC without datagrams, 0 = never (default %u)\n"
         "  --udp-max-streams N       concurrent UDP streams per tunnel (default %zu)\n"
         "  --udp-max-datagram BYTES  largest relayed datagram (default %zu)\n"
-        "  --udp-allow-private       allow UDP to loopback/private/link-local/multicast addresses\n"
+        
         "  --threads N               reactor threads, 0 = one per CPU core (default %d)\n"
         "  -v, --verbose             debug logging\n"
         "  -h, --help                this text\n",

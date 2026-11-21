@@ -7,6 +7,7 @@
 enum class Socks5ReplyCode : uint8_t {
     Succeeded = 0x00,
     GeneralFailure = 0x01,
+    NotAllowed = 0x02,          // connection not allowed by the ruleset (destination policy)
     NetworkUnreachable = 0x03,
     HostUnreachable = 0x04,
     ConnectionRefused = 0x05,

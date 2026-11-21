@@ -38,9 +38,6 @@ public:
     // Takes over the stream, answers the request and handles `pending` (frames that arrived with it).
     void start(const std::string& pending);
 
-    // true when the address may be used as a destination (policy of --udp-allow-private)
-    static bool isAllowedDestination(const sockaddr* address, bool allowPrivate);
-
 private:
     static void onStreamData(void* argument, uint32_t streamId, const uint8_t* data, size_t length);
     static void onStreamRemoteFin(void* argument, uint32_t streamId);

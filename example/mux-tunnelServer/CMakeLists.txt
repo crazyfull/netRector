@@ -34,6 +34,7 @@ add_executable(muxTunnelServer
     src/ServerTunnel.cpp
     src/TargetConnection.cpp
     src/UdpRelay.cpp
+    src/DestinationPolicy.cpp
     src/WebSocketServerHandshake.cpp
     src/Socks5RequestParser.cpp
     src/Socks5Reply.cpp

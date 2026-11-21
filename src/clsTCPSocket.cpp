@@ -736,7 +736,8 @@ bool TCPSocket::tryNextAddress(int err)
         return false;
 
     // faghat khata haye marbot be host/shabake (na timeout-e koli)
-    if (err != ECONNREFUSED && err != EHOSTUNREACH && err != ENETUNREACH && err != ETIMEDOUT && err != ECONNRESET)
+    if (err != ECONNREFUSED && err != EHOSTUNREACH && err != ENETUNREACH && err != ETIMEDOUT && err != ECONNRESET
+        && !(err == EACCES && m_connectFilter))
         return false;
 
     sockaddr_storage ss;
@@ -762,6 +763,11 @@ bool TCPSocket::tryNextAddress(int err)
 
 void TCPSocket::startConnect(const sockaddr *addr, socklen_t addrLen)
 {
+    if (m_connectFilter && !m_connectFilter(m_connectFilterArg, addr, addrLen)) {
+        failConnect(EACCES);        // tries the next address of the host first
+        return;
+    }
+
     int fd = ::socket(addr->sa_family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_TCP);
     if (fd == -1) {
         failConnect(errno);

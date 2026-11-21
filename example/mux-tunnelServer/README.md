@@ -72,13 +72,22 @@ overridden at run time:
 | `--keepalive SEC` | 30 | mux ping interval, 0 = off |
 | `--handshake-timeout SEC` | 10 | time allowed for the handshake |
 | `--max-streams N` | 32768 | concurrent streams per tunnel |
+| `--allow-private` | off | allow TCP and UDP to loopback / private / link-local / multicast addresses (default: refused, except the local DNS `127.0.0.1:53`, `[::1]:53`) |
 | `--no-udp` | UDP on | refuse UDP-over-TCP streams |
 | `--udp-idle SEC` | 120 | close a UDP stream after SEC without datagrams (0 = never) |
 | `--udp-max-streams N` | 256 | concurrent UDP streams per tunnel |
 | `--udp-max-datagram BYTES` | 8192 | largest relayed datagram (512-65000) |
-| `--udp-allow-private` | off | allow UDP to loopback / private / link-local / multicast addresses |
 | `--threads N` | 0 | reactor threads, 0 = CPU count |
 | `-v` | | debug log |
+
+## Destination policy
+
+TCP connections and UDP datagrams may not go to loopback, private (RFC 1918), CGNAT, link-local
+(including the cloud metadata address 169.254.169.254), unique-local IPv6, multicast, broadcast or reserved
+addresses; this keeps the tunnel from reaching the server itself or its network. The check runs on the
+concrete address right before connecting, so a domain that resolves to an internal address is refused too
+(a refused TCP request gets SOCKS5 reply 0x02, "not allowed"). Exception: DNS on the server itself,
+`127.0.0.1:53` and `[::1]:53`. `--allow-private` turns the filter off (the old name `--udp-allow-private` still works).
 
 ## UDP over TCP
 
@@ -97,8 +106,7 @@ of the client. Notes:
 - IPv4 and IPv6 destinations; domain names are not resolved (frames with a domain are dropped).
 - Nothing is queued: a datagram that cannot be sent is dropped, and downstream datagrams are
   dropped while the stream's send queue is full (bounded memory, normal UDP behaviour).
-- Destinations in loopback, private, link-local (incl. 169.254.169.254), CGNAT, multicast and
-  reserved ranges are dropped unless `--udp-allow-private` is given. The TCP side has no such filter.
+- Destinations are checked by the same policy as TCP (see below); refused ones are dropped.
 - The UDP socket accepts datagrams from any source (full-cone behaviour, as games expect).
 - Idle streams are closed after `--udp-idle`; the client usually closes its UDP tunnel earlier.
 - Statistics show `udp streams` and `udp datagrams`.
