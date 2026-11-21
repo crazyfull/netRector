@@ -28,6 +28,12 @@ public:
     void targetConnected() { m_activeTargets++; m_totalTargets++; }
     void targetClosed() { m_activeTargets--; }
 
+    void udpStreamOpened(TunnelStats& tunnel) { tunnel.activeUdpStreams++; m_activeUdpStreams++; m_totalUdpStreams++; }
+    void udpStreamClosed(TunnelStats& tunnel) { tunnel.activeUdpStreams--; m_activeUdpStreams--; }
+    void udpUp(size_t bytes) { m_udpDatagramsUp++; m_udpBytesUp += bytes; }
+    void udpDown(size_t bytes) { m_udpDatagramsDown++; m_udpBytesDown += bytes; }
+    void udpDropped() { m_udpDropped++; }
+
     // Multi-line, human readable report.
     std::string report() const;
 
@@ -42,6 +48,13 @@ private:
     std::atomic<uint64_t> m_totalChannels { 0 };
     std::atomic<uint64_t> m_activeTargets { 0 };
     std::atomic<uint64_t> m_totalTargets { 0 };
+    std::atomic<uint64_t> m_activeUdpStreams { 0 };
+    std::atomic<uint64_t> m_totalUdpStreams { 0 };
+    std::atomic<uint64_t> m_udpDatagramsUp { 0 };
+    std::atomic<uint64_t> m_udpDatagramsDown { 0 };
+    std::atomic<uint64_t> m_udpBytesUp { 0 };
+    std::atomic<uint64_t> m_udpBytesDown { 0 };
+    std::atomic<uint64_t> m_udpDropped { 0 };
 };
 
 #endif // SERVERSTATS_H

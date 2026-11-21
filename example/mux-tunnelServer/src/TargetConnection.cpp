@@ -3,6 +3,7 @@
 #include "Socks5Reply.h"
 #include "Socks5Request.h"
 #include "Socks5RequestParser.h"
+#include "UdpRelay.h"
 
 #include "clsLog.h"
 
@@ -12,9 +13,10 @@
 using namespace netrector;
 
 TargetConnection::TargetConnection(MultiplexedTunnel* tunnel, uint32_t streamId, MultiplexedTunnel::Stream* stream,
-                                   ServerStats& stats, std::shared_ptr<TunnelStats> tunnelStats)
+                                   const ServerConfig& config, ServerStats& stats, std::shared_ptr<TunnelStats> tunnelStats)
     : m_tunnel(tunnel)
     , m_streamId(streamId)
+    , m_config(config)
     , m_stats(stats)
     , m_tunnelStats(std::move(tunnelStats))
 {
@@ -138,6 +140,12 @@ void TargetConnection::handleRequest()
     }
 
     m_buffer.erase(0, request.length);
+
+    if (request.command == Socks5Command::ForwardUdp) {
+        startUdpRelay();
+        return;
+    }
+
     m_state = State::Connecting;
 
     // Until the target is connected no window is returned, so the client can send at most one
@@ -148,6 +156,31 @@ void TargetConnection::handleRequest()
     if (!connectTo(request.host.c_str(), request.port))
         failWith(Socks5ReplyCode::GeneralFailure);
     // true: the result arrives through onConnected() / onConnectFailed()
+}
+
+// SOCKS5 FWD UDP: this stream becomes a UdpRelay; this object (which never opened a socket) goes away.
+void TargetConnection::startUdpRelay()
+{
+    if (!m_config.udpEnabled) {
+        failWith(Socks5ReplyCode::CommandNotSupported);
+        return;
+    }
+
+    if (m_tunnelStats->activeUdpStreams.load() >= m_config.udpMaxStreamsPerTunnel) {
+        NR_LOG(LOG_DEBUG, "[server] stream %u: too many UDP streams on this tunnel", m_streamId);
+        failWith(Socks5ReplyCode::GeneralFailure);
+        return;
+    }
+
+    const uint32_t streamId = m_streamId;
+    const std::string pending = std::move(m_buffer);
+
+    m_streamId = 0;                 // the relay owns the stream now; our onClose() must not touch it
+    m_state = State::Failed;
+    close();
+
+    UdpRelay* relay = new UdpRelay(m_tunnel, streamId, m_config, m_stats, m_tunnelStats);
+    relay->start(pending);
 }
 
 void TargetConnection::sendReply(Socks5ReplyCode code)

@@ -32,6 +32,18 @@ constexpr uint32_t KeepAliveSeconds = 30;
 constexpr uint32_t HandshakeTimeoutSeconds = 10;
 // Maximum number of concurrent streams (SOCKS5 connections) per tunnel.
 constexpr size_t MaxStreamsPerTunnel = 32768;
+// UDP-over-TCP (SOCKS5 FWD UDP of hev-socks5-tunnel, used by the apps for games / calls).
+// Each UDP stream of a client gets its own UDP socket on this server.
+constexpr bool UdpEnabled = true;
+// A UDP stream without any datagram in either direction for this long is closed (0 = never).
+constexpr uint32_t UdpIdleSeconds = 120;
+// Concurrent UDP streams per tunnel.
+constexpr size_t UdpMaxStreamsPerTunnel = 256;
+// Largest datagram that is relayed (bigger ones are dropped). The frame length is 16 bit.
+constexpr size_t UdpMaxDatagram = 8192;
+// Allow UDP towards loopback / private / link-local / multicast addresses (off: dropped, which
+// keeps the tunnel from being used to reach the server's own network).
+constexpr bool UdpAllowPrivate = false;
 // Reactor threads. 0 = one per CPU core.
 constexpr int Threads = 0;
 

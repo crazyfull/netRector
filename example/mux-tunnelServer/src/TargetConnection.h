@@ -1,6 +1,7 @@
 #ifndef TARGETCONNECTION_H
 #define TARGETCONNECTION_H
 
+#include "ServerConfig.h"
 #include "ServerStats.h"
 #include "Socks5ReplyCode.h"
 
@@ -21,7 +22,7 @@
 class TargetConnection : public netrector::TCPSocket {
 public:
     TargetConnection(netrector::MultiplexedTunnel* tunnel, uint32_t streamId, netrector::MultiplexedTunnel::Stream* stream,
-                     ServerStats& stats, std::shared_ptr<TunnelStats> tunnelStats);
+                     const ServerConfig& config, ServerStats& stats, std::shared_ptr<TunnelStats> tunnelStats);
     ~TargetConnection() override;
 
     void onConnected() override;
@@ -41,6 +42,7 @@ private:
     };
 
     void handleRequest();
+    void startUdpRelay();
     void sendReply(Socks5ReplyCode code);
     void failWith(Socks5ReplyCode code);
 
@@ -56,6 +58,7 @@ private:
     std::string m_buffer;               // partial request, then data received before the target is connected
     bool m_streamFinReceived = false;   // the client finished sending
     bool m_finSentToStream = false;     // the target finished sending
+    const ServerConfig& m_config;
     ServerStats& m_stats;
     std::shared_ptr<TunnelStats> m_tunnelStats;     // kept alive: this object can outlive its tunnel
     bool m_targetCounted = false;       // targetConnected() was reported

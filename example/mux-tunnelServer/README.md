@@ -72,8 +72,36 @@ overridden at run time:
 | `--keepalive SEC` | 30 | mux ping interval, 0 = off |
 | `--handshake-timeout SEC` | 10 | time allowed for the handshake |
 | `--max-streams N` | 32768 | concurrent streams per tunnel |
+| `--no-udp` | UDP on | refuse UDP-over-TCP streams |
+| `--udp-idle SEC` | 120 | close a UDP stream after SEC without datagrams (0 = never) |
+| `--udp-max-streams N` | 256 | concurrent UDP streams per tunnel |
+| `--udp-max-datagram BYTES` | 8192 | largest relayed datagram (512-65000) |
+| `--udp-allow-private` | off | allow UDP to loopback / private / link-local / multicast addresses |
 | `--threads N` | 0 | reactor threads, 0 = CPU count |
 | `-v` | | debug log |
+
+## UDP over TCP
+
+A mux stream whose SOCKS5 request has command `0x05` (the "UDP in TCP" of hev-socks5-tunnel,
+`udp: 'tcp'`) becomes a UDP relay. After the usual 10-byte success reply the stream carries
+datagram frames in both directions:
+
+```
+DATLEN(2, big endian) | HDRLEN(1) | ATYP | ADDR | PORT(2) | DATA      HDRLEN = 3 + len(ATYP+ADDR+PORT)
+```
+
+Upstream the address is the destination, downstream the source of the datagram. Each stream has
+its own UDP socket (one per address family, opened on first use), so a stream is one UDP "session"
+of the client. Notes:
+
+- IPv4 and IPv6 destinations; domain names are not resolved (frames with a domain are dropped).
+- Nothing is queued: a datagram that cannot be sent is dropped, and downstream datagrams are
+  dropped while the stream's send queue is full (bounded memory, normal UDP behaviour).
+- Destinations in loopback, private, link-local (incl. 169.254.169.254), CGNAT, multicast and
+  reserved ranges are dropped unless `--udp-allow-private` is given. The TCP side has no such filter.
+- The UDP socket accepts datagrams from any source (full-cone behaviour, as games expect).
+- Idle streams are closed after `--udp-idle`; the client usually closes its UDP tunnel earlier.
+- Statistics show `udp streams` and `udp datagrams`.
 
 ## Runtime statistics
 

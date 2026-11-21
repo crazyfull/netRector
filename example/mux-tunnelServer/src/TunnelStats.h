@@ -14,6 +14,7 @@ struct TunnelStats {
     std::chrono::steady_clock::time_point establishedAt;
     std::atomic<uint32_t> activeStreams { 0 };
     std::atomic<uint64_t> totalStreams { 0 };
+    std::atomic<uint32_t> activeUdpStreams { 0 };
 };
 
 #endif // TUNNELSTATS_H
