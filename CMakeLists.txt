@@ -129,14 +129,20 @@ if(NETRECTOR_ENABLE_TLS)
     )
 
     if(BORINGSSL_SSL AND BORINGSSL_CRYPTO AND EXISTS "${BORINGSSL_INCLUDE_DIR}/openssl/ssl.h")
-        # netRector needs SSL_set_record_protocol_version / TLS_CL_VERSION (scripts/patch_boringssl.sh),
-        # applied to the BoringSSL sources BEFORE they are built.
-        file(READ "${BORINGSSL_INCLUDE_DIR}/openssl/ssl.h" _bssl_ssl_h)
-        if(NOT _bssl_ssl_h MATCHES "SSL_set_record_protocol_version" OR NOT _bssl_ssl_h MATCHES "TLS_CL_VERSION")
-            message(FATAL_ERROR "This BoringSSL (${BORINGSSL_INCLUDE_DIR}) lacks SSL_set_record_protocol_version / "
-                                "TLS_CL_VERSION. Apply scripts/patch_boringssl.sh <boringssl-src> to the sources and "
-                                "rebuild BoringSSL (scripts/build_boringssl.sh does both), or use -DNETRECTOR_ENABLE_TLS=OFF.")
-        endif()
+        # The customized BoringSSL (scripts/patch_boringssl.sh) has SSL_set_record_protocol_version and
+        # TLS_CL_VERSION, a stock one has not. Detect it with a declaration check (also works when
+        # cross-compiling); a stock BoringSSL simply skips the record-version customization.
+        include(CheckCXXSourceCompiles)
+        set(_saved_required_includes ${CMAKE_REQUIRED_INCLUDES})
+        set(_saved_try_type ${CMAKE_TRY_COMPILE_TARGET_TYPE})
+        set(CMAKE_REQUIRED_INCLUDES ${BORINGSSL_INCLUDE_DIR})
+        set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+        check_cxx_source_compiles("
+            #include <openssl/ssl.h>
+            void f(SSL* ssl) { SSL_set_record_protocol_version(ssl, TLS_CL_VERSION); }
+            int main() { return 0; }" NETRECTOR_BSSL_RECORD_VERSION)
+        set(CMAKE_REQUIRED_INCLUDES ${_saved_required_includes})
+        set(CMAKE_TRY_COMPILE_TARGET_TYPE ${_saved_try_type})
         set(NETRECTOR_HAS_TLS ON)
     else()
         message(WARNING "BoringSSL not found (include='${BORINGSSL_INCLUDE_DIR}', ssl='${BORINGSSL_SSL}', "
@@ -148,6 +154,11 @@ endif()
 if(NETRECTOR_HAS_TLS)
     message(STATUS "netRector: TLS enabled (BoringSSL: ${BORINGSSL_SSL})")
     target_compile_definitions(netRector PUBLIC NETRECTOR_HAS_TLS=1)
+    if(NETRECTOR_BSSL_RECORD_VERSION)
+        target_compile_definitions(netRector PUBLIC NETRECTOR_BSSL_RECORD_VERSION=1)
+    else()
+        message(STATUS "netRector: stock BoringSSL (no SSL_set_record_protocol_version), the record-version customization is skipped")
+    endif()
     target_include_directories(netRector PUBLIC "${BORINGSSL_INCLUDE_DIR}")
     target_link_libraries(netRector PUBLIC "${BORINGSSL_SSL}" "${BORINGSSL_CRYPTO}")
 else()
